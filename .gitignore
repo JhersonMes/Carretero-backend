@@ -1,0 +1,29 @@
+# =============================================
+# Carretero Backend - Spring Boot / Maven
+# =============================================
+
+# ---------- Build ----------
+target/
+
+# ---------- Variables de entorno (credenciales) ----------
+.env
+
+# ---------- IDE ----------
+.idea/
+*.iml
+.project
+.classpath
+.settings/
+*.swp
+*.swo
+
+# ---------- Maven Wrapper (opcional, algunos lo incluyen) ----------
+# .mvn/wrapper/maven-wrapper.jar
+
+# ---------- Logs ----------
+*.log
+logs/
+
+# ---------- OS ----------
+.DS_Store
+Thumbs.db
