@@ -94,6 +94,7 @@ public class OrderService extends GenericService<Order, Integer> implements IOrd
 
             OrderDetail detail = new OrderDetail();
             detail.setOrder(order);
+            detail.setUser(user);
             detail.setProduct(product);
             detail.setProductName(product.getName());
             BigDecimal unitPrice = resolveUnitPrice(product, itemReq);
@@ -124,7 +125,7 @@ public class OrderService extends GenericService<Order, Integer> implements IOrd
 
     @Override
     @Transactional
-    public Order addItemsToOrder(Integer idOrder, List<OrderCreateRequestDTO.OrderItemRequestDTO> items) throws Exception {
+    public Order addItemsToOrder(Integer idOrder, List<OrderCreateRequestDTO.OrderItemRequestDTO> items, User user) throws Exception {
         Order order = repo.findById(idOrder)
                 .orElseThrow(() -> new ModelNotFoundException("Pedido no encontrado: " + idOrder));
 
@@ -134,6 +135,9 @@ public class OrderService extends GenericService<Order, Integer> implements IOrd
 
             OrderDetail detail = new OrderDetail();
             detail.setOrder(order);
+            // Quien agrega el plato queda registrado en el item: en una mesa larga
+            // pueden turnarse varios meseros y el salon debe mostrarlos a todos.
+            detail.setUser(user);
             detail.setProduct(product);
             detail.setProductName(product.getName());
             BigDecimal unitPrice = resolveUnitPrice(product, itemReq);
@@ -185,6 +189,15 @@ public class OrderService extends GenericService<Order, Integer> implements IOrd
         OrderDetail detail = orderDetailRepo.findById(idOrderDetail)
                 .orElseThrow(() -> new ModelNotFoundException("Item de pedido no encontrado: " + idOrderDetail));
         detail.setItemStatus(status);
+
+        // El sello de despacho detiene el cronometro que ve el mesero en la mesa.
+        // Si la estacion devuelve el item a preparacion, el cronometro vuelve a correr.
+        if (status == OrderItemStatus.LISTO) {
+            detail.setReadyAt(LocalDateTime.now());
+        } else {
+            detail.setReadyAt(null);
+        }
+
         return orderDetailRepo.save(detail);
     }
 

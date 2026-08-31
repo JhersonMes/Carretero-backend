@@ -37,6 +37,7 @@ public class DataInitializer implements CommandLineRunner {
         initCarteraCarretero();
         initBebidas();
         initDiningTables();
+        backfillTableOrder();
         initConfig();
     }
 
@@ -368,6 +369,38 @@ public class DataInitializer implements CommandLineRunner {
             }
             log.info("Mesas de salón iniciales registradas.");
         }
+    }
+
+    /**
+     * Asigna una posicion en el plano a las mesas que aun no la tienen.
+     *
+     * Las mesas creadas antes de existir la columna order_index quedan en null y
+     * caerian todas al final del salon en el mismo monton. Se les da un orden
+     * inicial por id (que es el orden en que se registraron) y a partir de ahi el
+     * administrador las reacomoda arrastrandolas. Solo toca las que estan en null,
+     * asi que nunca pisa un plano ya acomodado a mano.
+     */
+    private void backfillTableOrder() {
+        List<DiningTable> pending = tableRepo.findAllOrdered().stream()
+                .filter(t -> t.getOrderIndex() == null)
+                .toList();
+
+        if (pending.isEmpty()) {
+            return;
+        }
+
+        int next = tableRepo.findAllOrdered().stream()
+                .map(DiningTable::getOrderIndex)
+                .filter(java.util.Objects::nonNull)
+                .max(Integer::compareTo)
+                .map(max -> max + 1)
+                .orElse(0);
+
+        for (DiningTable table : pending) {
+            table.setOrderIndex(next++);
+            tableRepo.save(table);
+        }
+        log.info("Se asigno posicion en el plano del salon a {} mesa(s) sin orden previo.", pending.size());
     }
 
     private void initConfig() {

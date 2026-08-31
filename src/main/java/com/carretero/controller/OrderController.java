@@ -8,6 +8,7 @@ import com.carretero.model.enums.OrderStatus;
 import com.carretero.model.enums.OrderType;
 import com.carretero.repository.IUserRepository;
 import com.carretero.service.IOrderService;
+import com.carretero.service.OrderBoardNotifier;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.modelmapper.ModelMapper;
@@ -16,7 +17,6 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
@@ -29,11 +29,9 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class OrderController {
 
-    private static final String KITCHEN_TOPIC = "/topic/kitchen";
-
     private final IOrderService service;
     private final IUserRepository userRepo;
-    private final SimpMessagingTemplate messagingTemplate;
+    private final OrderBoardNotifier boardNotifier;
 
     @Qualifier("orderMapper")
     private final ModelMapper orderMapper;
@@ -130,7 +128,10 @@ public class OrderController {
     public ResponseEntity<OrderDTO> addItemsToOrder(
             @PathVariable("id") Integer id,
             @Valid @RequestBody List<OrderCreateRequestDTO.OrderItemRequestDTO> items) throws Exception {
-        Order updated = service.addItemsToOrder(id, items);
+        String username = SecurityContextHolder.getContext().getAuthentication().getName();
+        User currentUser = userRepo.findOneByUsername(username);
+
+        Order updated = service.addItemsToOrder(id, items, currentUser);
         notifyKitchen();
         return ResponseEntity.ok(mapToDTO(updated));
     }
@@ -185,7 +186,7 @@ public class OrderController {
     }
 
     private void notifyKitchen() {
-        messagingTemplate.convertAndSend(KITCHEN_TOPIC, Map.of("event", "KITCHEN_UPDATED"));
+        boardNotifier.notifyBoards();
     }
 
     private OrderDTO mapToDTO(Order order) {

@@ -11,6 +11,7 @@ import com.carretero.repository.IPaymentRepository;
 import com.carretero.service.ICashShiftService;
 import com.carretero.service.IOrderService;
 import com.carretero.service.IPaymentService;
+import com.carretero.service.OrderBoardNotifier;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -30,6 +31,7 @@ public class PaymentService extends GenericService<Payment, Integer> implements 
     private final IPaymentMethodRepository paymentMethodRepo;
     private final ICashShiftService cashShiftService;
     private final IOrderService orderService;
+    private final OrderBoardNotifier boardNotifier;
 
     @Override
     protected IGenericRepository<Payment, Integer> getRepo() {
@@ -96,6 +98,9 @@ public class PaymentService extends GenericService<Payment, Integer> implements 
         if (sumAllPayments.compareTo(order.getTotal()) >= 0) {
             orderService.updateOrderStatus(order.getIdOrder(), OrderStatus.PAGADO);
         }
+
+        // Cobrar libera la mesa: el tablero de Salon debe enterarse sin recargar.
+        boardNotifier.notifyBoards();
 
         return createdPayments;
     }

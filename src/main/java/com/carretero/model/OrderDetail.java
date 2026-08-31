@@ -66,4 +66,21 @@ public class OrderDetail {
      */
     @Column(name = "sent_at")
     private LocalDateTime sentAt;
+
+    /**
+     * Momento en que la estacion marco el item como despachado. Detiene el
+     * cronometro que ve el mesero en la mesa. Null mientras siga en preparacion.
+     */
+    @Column(name = "ready_at")
+    private LocalDateTime readyAt;
+
+    /**
+     * Mesero que agrego este item. Se guarda por item y no solo en el pedido
+     * porque en una misma mesa pueden intervenir varios meseros a lo largo del
+     * servicio, y el salon debe mostrar a todos los que participaron.
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "id_user",
+            foreignKey = @ForeignKey(name = "FK_ORDER_DETAIL_USER"))
+    private User user;
 }

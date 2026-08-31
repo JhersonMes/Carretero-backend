@@ -15,7 +15,7 @@ import java.util.Optional;
 
 public interface IOrderService extends IGenericService<Order, Integer> {
     Order createOrder(OrderCreateRequestDTO request, User user) throws Exception;
-    Order addItemsToOrder(Integer idOrder, List<OrderCreateRequestDTO.OrderItemRequestDTO> items) throws Exception;
+    Order addItemsToOrder(Integer idOrder, List<OrderCreateRequestDTO.OrderItemRequestDTO> items, User user) throws Exception;
     Order updateOrderStatus(Integer idOrder, OrderStatus status) throws Exception;
     OrderDetail updateItemStatus(Integer idOrderDetail, OrderItemStatus status) throws Exception;
     List<Order> findByStatus(OrderStatus status);

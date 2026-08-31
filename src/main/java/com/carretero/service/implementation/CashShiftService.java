@@ -4,13 +4,16 @@ import com.carretero.dto.CashMovementDTO;
 import com.carretero.exception.ModelNotFoundException;
 import com.carretero.model.CashMovement;
 import com.carretero.model.CashShift;
+import com.carretero.model.Order;
 import com.carretero.model.Payment;
 import com.carretero.model.User;
 import com.carretero.model.enums.CashMovementType;
 import com.carretero.model.enums.CashShiftStatus;
+import com.carretero.model.enums.OrderStatus;
 import com.carretero.repository.ICashMovementRepository;
 import com.carretero.repository.ICashShiftRepository;
 import com.carretero.repository.IGenericRepository;
+import com.carretero.repository.IOrderRepository;
 import com.carretero.repository.IPaymentRepository;
 import com.carretero.service.ICashShiftService;
 import lombok.RequiredArgsConstructor;
@@ -26,9 +29,14 @@ import java.util.Optional;
 @RequiredArgsConstructor
 public class CashShiftService extends GenericService<CashShift, Integer> implements ICashShiftService {
 
+    /** Estados en los que el pedido ya no espera cobro. */
+    private static final List<OrderStatus> COLLECTED_STATUSES =
+            List.of(OrderStatus.PAGADO, OrderStatus.CANCELADO);
+
     private final ICashShiftRepository repo;
     private final ICashMovementRepository movementRepo;
     private final IPaymentRepository paymentRepo;
+    private final IOrderRepository orderRepo;
 
     @Override
     protected IGenericRepository<CashShift, Integer> getRepo() {
@@ -69,6 +77,8 @@ public class CashShiftService extends GenericService<CashShift, Integer> impleme
             throw new IllegalStateException("El turno de caja ya se encuentra cerrado.");
         }
 
+        assertNothingLeftToCollect();
+
         // Recalcular montos consolidados antes del cierre
         recalculateShiftTotals(idCashShift);
 
@@ -81,6 +91,37 @@ public class CashShiftService extends GenericService<CashShift, Integer> impleme
         }
 
         return repo.save(shift);
+    }
+
+    /**
+     * La caja no cierra mientras queden mesas sin cobrar.
+     *
+     * La condicion se evalua sobre el estado real de la mesa y no sobre quien la
+     * atendio: una mesa la pueden haber servido varios meseros, y basta con que
+     * cualquiera de ellos la baje para que deje de bloquear a todos. Si en cambio se
+     * llevara una cuenta por mesero, cobrar dejaria libre a uno y seguiria trabando a
+     * los demas con una mesa que ya no existe.
+     *
+     * Solo cuenta el salon. La venta rapida se cobra al momento de tomar el pedido,
+     * de modo que nunca deja una cuenta abierta que reclamar al cliente.
+     */
+    private void assertNothingLeftToCollect() {
+        List<String> tables = orderRepo.findUncollectedTableOrders(COLLECTED_STATUSES).stream()
+                .map(order -> order.getTable().getName())
+                .distinct()
+                .toList();
+
+        if (tables.isEmpty()) {
+            return;
+        }
+
+        String count = tables.size() == 1
+                ? "falta cobrar 1 mesa"
+                : "faltan cobrar " + tables.size() + " mesas";
+
+        throw new IllegalStateException(
+                "No se puede cerrar la caja: " + count + " (" + String.join(", ", tables) + "). "
+                        + "Cobralas desde Salon antes de cerrar el turno.");
     }
 
     @Override

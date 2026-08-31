@@ -4,6 +4,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -34,6 +35,22 @@ public class ResponseExceptionHandler extends ResponseEntityExceptionHandler {
                 request.getDescription(false)
         );
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(error);
+    }
+
+    /**
+     * Sin este manejador, el @ExceptionHandler generico de arriba atrapaba los
+     * rechazos de @PreAuthorize y los devolvia como 500. El interceptor del
+     * frontend distingue el 403 para avisar "No tiene permisos para realizar esta
+     * accion", asi que un 500 le hacia mostrar un error de servidor generico.
+     */
+    @ExceptionHandler(AccessDeniedException.class)
+    public ResponseEntity<CustomErrorTemplate> handleAccessDeniedException(AccessDeniedException ex, WebRequest request) {
+        CustomErrorTemplate error = new CustomErrorTemplate(
+                LocalDateTime.now(),
+                "No tiene permisos para realizar esta accion",
+                request.getDescription(false)
+        );
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(error);
     }
 
     @ExceptionHandler(IllegalStateException.class)

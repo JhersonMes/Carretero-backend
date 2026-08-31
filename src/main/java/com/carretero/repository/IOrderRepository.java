@@ -29,6 +29,31 @@ public interface IOrderRepository extends IGenericRepository<Order, Integer> {
     @Query("SELECT DISTINCT o FROM Order o LEFT JOIN FETCH o.details WHERE o.status IN :statuses")
     List<Order> findByStatusInWithDetails(@Param("statuses") List<OrderStatus> statuses);
 
+    /**
+     * Pedidos activos de mesa para el tablero de Salon, con los items y los meseros
+     * ya cargados. Se traen en una sola consulta porque el tablero se refresca en
+     * cada evento de cocina y un N+1 por mesa se notaria en la laptop del local.
+     */
+    @Query("SELECT DISTINCT o FROM Order o " +
+            "LEFT JOIN FETCH o.details d " +
+            "LEFT JOIN FETCH d.user " +
+            "LEFT JOIN FETCH o.user " +
+            "WHERE o.table IS NOT NULL AND o.status NOT IN :excludedStatuses")
+    List<Order> findActiveTableOrdersForBoard(@Param("excludedStatuses") List<OrderStatus> excludedStatuses);
+
+    /**
+     * Mesas con consumo servido que todavia nadie cobro.
+     *
+     * Es la condicion que bloquea el cierre de caja. Solo mira pedidos de mesa: en
+     * salon la cuenta se cobra al final de la comida, asi que un pedido abierto es
+     * plata que sigue en el aire. La venta rapida y el delivery se cobran en el
+     * momento de pedir y no dejan cuenta pendiente, por lo que no traban el cierre.
+     */
+    @Query("SELECT o FROM Order o JOIN FETCH o.table " +
+            "WHERE o.table IS NOT NULL AND o.status NOT IN :collectedStatuses " +
+            "ORDER BY o.createdAt")
+    List<Order> findUncollectedTableOrders(@Param("collectedStatuses") List<OrderStatus> collectedStatuses);
+
     @Query("SELECT DISTINCT o FROM Order o LEFT JOIN FETCH o.details WHERE o.status = :status")
     List<Order> findByStatusWithDetails(@Param("status") OrderStatus status);
 
