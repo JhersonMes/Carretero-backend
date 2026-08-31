@@ -6,8 +6,11 @@ import com.carretero.model.CashShift;
 import com.carretero.model.User;
 import com.carretero.model.enums.CashMovementType;
 import com.carretero.model.enums.CashShiftStatus;
+import com.carretero.model.DiningTable;
+import com.carretero.model.Order;
 import com.carretero.repository.ICashMovementRepository;
 import com.carretero.repository.ICashShiftRepository;
+import com.carretero.repository.IOrderRepository;
 import com.carretero.repository.IPaymentRepository;
 import com.carretero.service.implementation.CashShiftService;
 import org.junit.jupiter.api.BeforeEach;
@@ -24,6 +27,7 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -35,6 +39,8 @@ class CashShiftServiceTest {
     private ICashMovementRepository movementRepo;
     @Mock
     private IPaymentRepository paymentRepo;
+    @Mock
+    private IOrderRepository orderRepo;
 
     @InjectMocks
     private CashShiftService cashShiftService;
@@ -82,6 +88,8 @@ class CashShiftServiceTest {
 
         when(paymentRepo.findByCashShiftIdCashShift(1)).thenReturn(Collections.emptyList());
         when(movementRepo.findByCashShiftIdCashShift(1)).thenReturn(List.of(mockMov));
+        // Sin mesas pendientes de cobro, que es lo que habilita el cierre.
+        when(orderRepo.findUncollectedTableOrders(anyList())).thenReturn(Collections.emptyList());
 
         CashMovementDTO movDto = new CashMovementDTO();
         movDto.setIdCashShift(1);
@@ -100,5 +108,34 @@ class CashShiftServiceTest {
         assertEquals(new BigDecimal("85.00"), closed.getActualCash());
         assertEquals(new BigDecimal("80.00"), closed.getExpectedCash());
         assertEquals(new BigDecimal("5.00"), closed.getDifference());
+    }
+
+    @Test
+    void testCloseShiftBlockedWhenATableIsUncollected() {
+        CashShift openShift = new CashShift();
+        openShift.setIdCashShift(1);
+        openShift.setStatus(CashShiftStatus.ABIERTA);
+        openShift.setInitialAmount(new BigDecimal("100.00"));
+        openShift.setExpectedCash(new BigDecimal("100.00"));
+
+        DiningTable table = new DiningTable();
+        table.setIdTable(3);
+        table.setName("Mesa 3");
+
+        Order uncollected = new Order();
+        uncollected.setIdOrder(7);
+        uncollected.setTable(table);
+
+        when(shiftRepo.findById(1)).thenReturn(Optional.of(openShift));
+        when(orderRepo.findUncollectedTableOrders(anyList())).thenReturn(List.of(uncollected));
+
+        IllegalStateException error = assertThrows(
+                IllegalStateException.class,
+                () -> cashShiftService.closeShift(1, new BigDecimal("85.00"), null));
+
+        assertTrue(error.getMessage().contains("Mesa 3"));
+        // La caja no debe quedar cerrada ni recalculada tras el rechazo.
+        assertEquals(CashShiftStatus.ABIERTA, openShift.getStatus());
+        verify(shiftRepo, never()).save(any(CashShift.class));
     }
 }

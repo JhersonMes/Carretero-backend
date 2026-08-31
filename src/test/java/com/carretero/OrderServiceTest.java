@@ -1,12 +1,14 @@
 package com.carretero;
 
 import com.carretero.dto.OrderCreateRequestDTO;
+import com.carretero.model.CashShift;
 import com.carretero.model.Order;
 import com.carretero.model.Product;
 import com.carretero.model.User;
 import com.carretero.model.enums.OrderStatus;
 import com.carretero.model.enums.OrderType;
 import com.carretero.repository.*;
+import com.carretero.service.ICashShiftService;
 import com.carretero.service.implementation.OrderService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -38,6 +40,10 @@ class OrderServiceTest {
     private IClientRepository clientRepo;
     @Mock
     private IAddressRepository addressRepo;
+    @Mock
+    private IFlavorRepository flavorRepo;
+    @Mock
+    private ICashShiftService cashShiftService;
 
     @InjectMocks
     private OrderService orderService;
@@ -65,6 +71,8 @@ class OrderServiceTest {
 
     @Test
     void testCreateOrderWithCalculations() throws Exception {
+        // Sin caja aperturada el servicio rechaza el pedido antes de calcular nada.
+        when(cashShiftService.getActiveShift()).thenReturn(Optional.of(new CashShift()));
         when(orderRepo.countOrdersToday(any())).thenReturn(5L);
         when(productRepo.findById(1)).thenReturn(Optional.of(burger));
         when(productRepo.findById(2)).thenReturn(Optional.of(drink));
@@ -75,8 +83,9 @@ class OrderServiceTest {
         dto.setDiscount(new BigDecimal("2.00"));
         dto.setDeliveryFee(BigDecimal.ZERO);
         dto.setItems(List.of(
-                new OrderCreateRequestDTO.OrderItemRequestDTO(1, 2, "Sin cebolla"), // 2 * 16.00 = 32.00
-                new OrderCreateRequestDTO.OrderItemRequestDTO(2, 1, "Helada")      // 1 * 10.00 = 10.00
+                // Sin sabor: estos productos no lo exigen (idFlavor y flavorName van nulos).
+                new OrderCreateRequestDTO.OrderItemRequestDTO(1, 2, null, null, "Sin cebolla"), // 2 * 16.00 = 32.00
+                new OrderCreateRequestDTO.OrderItemRequestDTO(2, 1, null, null, "Helada")      // 1 * 10.00 = 10.00
         )); // Subtotal = 42.00, Total = 42.00 - 2.00 = 40.00
 
         Order created = orderService.createOrder(dto, mockUser);

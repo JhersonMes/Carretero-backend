@@ -115,13 +115,13 @@ public class CashShiftService extends GenericService<CashShift, Integer> impleme
             return;
         }
 
-        String count = tables.size() == 1
-                ? "falta cobrar 1 mesa"
-                : "faltan cobrar " + tables.size() + " mesas";
+        boolean single = tables.size() == 1;
+        String count = single ? "falta cobrar 1 mesa" : "faltan cobrar " + tables.size() + " mesas";
+        String call = single ? "Cobrala" : "Cobralas";
 
         throw new IllegalStateException(
                 "No se puede cerrar la caja: " + count + " (" + String.join(", ", tables) + "). "
-                        + "Cobralas desde Salon antes de cerrar el turno.");
+                        + call + " desde Salon antes de cerrar el turno.");
     }
 
     @Override
