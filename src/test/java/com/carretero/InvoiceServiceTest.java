@@ -14,7 +14,10 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import com.carretero.model.enums.SunatStatus;
+
 import java.math.BigDecimal;
+import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -61,7 +64,8 @@ class InvoiceServiceTest {
     @Test
     void testEmitBoletaCalculatesIgvCorrectly() throws Exception {
         when(orderRepo.findById(100)).thenReturn(Optional.of(mockOrder));
-        when(invoiceRepo.findByOrderIdOrder(100)).thenReturn(Optional.empty());
+        when(invoiceRepo.findByOrderIdOrderAndSunatStatusNot(100, SunatStatus.ANULADO))
+                .thenReturn(List.of());
         when(configRepo.findFirstByActiveTrue()).thenReturn(Optional.of(mockConfig));
         when(invoiceRepo.findMaxCorrelativeBySeries("B001")).thenReturn(4);
         when(sunatService.dispatchToSunat(any(Invoice.class))).thenAnswer(invocation -> invocation.getArgument(0));
@@ -88,7 +92,8 @@ class InvoiceServiceTest {
     @Test
     void testEmitFacturaRequires11DigitRuc() {
         when(orderRepo.findById(100)).thenReturn(Optional.of(mockOrder));
-        when(invoiceRepo.findByOrderIdOrder(100)).thenReturn(Optional.empty());
+        when(invoiceRepo.findByOrderIdOrderAndSunatStatusNot(100, SunatStatus.ANULADO))
+                .thenReturn(List.of());
         when(configRepo.findFirstByActiveTrue()).thenReturn(Optional.of(mockConfig));
 
         InvoiceEmitRequestDTO request = new InvoiceEmitRequestDTO();

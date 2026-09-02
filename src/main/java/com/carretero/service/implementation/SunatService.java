@@ -14,6 +14,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.RestTemplate;
 
 import java.util.Map;
@@ -29,7 +30,12 @@ public class SunatService implements ISunatService {
     private final IBusinessConfigRepository businessConfigRepository;
     private final RestTemplate restTemplate = new RestTemplate();
 
+    /**
+     * Transaccional porque la respuesta lee las direcciones del cliente local, que
+     * son LAZY: fuera de una sesion abierta esa lectura falla.
+     */
     @Override
+    @Transactional(readOnly = true)
     public DniRucQueryResponseDTO queryDocument(String docNumber) {
         if (docNumber == null || docNumber.trim().isEmpty()) {
             return new DniRucQueryResponseDTO(false, null, docNumber, null, null, null, "Número de documento vacío", false);
@@ -39,7 +45,7 @@ public class SunatService implements ISunatService {
         DocumentType docType = (doc.length() == 8) ? DocumentType.DNI : (doc.length() == 11 ? DocumentType.RUC : DocumentType.CE);
 
         // 1. Consultar en Base de Datos local primero (Caché sin costo ni internet)
-        Optional<Client> localClient = clientRepository.findByDocNumber(doc);
+        Optional<Client> localClient = clientRepository.findAllByDocNumber(doc).stream().findFirst();
         if (localClient.isPresent()) {
             Client c = localClient.get();
             return new DniRucQueryResponseDTO(
@@ -161,7 +167,15 @@ public class SunatService implements ISunatService {
         invoice.setSunatResponseCode("0");
         invoice.setSunatDescription("Comprobante generado y validado en modo local (PSE de prueba)");
         invoice.setCdrHash(UUID.randomUUID().toString().substring(0, 20));
-        invoice.setQrData(String.format("20000000001|%s|%s|%d|%.2f|%.2f|%s",
+
+        // El QR abre con el RUC del emisor. Antes iba uno de relleno, que en una
+        // boleta impresa se lee como si el comprobante fuera de otra empresa.
+        String issuerRuc = configOpt.map(BusinessConfig::getRuc)
+                .filter(ruc -> ruc != null && !ruc.isBlank())
+                .orElse("00000000000");
+
+        invoice.setQrData(String.format("%s|%s|%s|%d|%.2f|%.2f|%s",
+                issuerRuc,
                 invoice.getInvoiceType() == InvoiceType.FACTURA ? "01" : "03",
                 invoice.getSeries(),
                 invoice.getCorrelativeNumber(),

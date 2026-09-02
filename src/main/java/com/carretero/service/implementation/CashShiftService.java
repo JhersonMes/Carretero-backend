@@ -204,6 +204,11 @@ public class CashShiftService extends GenericService<CashShift, Integer> impleme
         BigDecimal transferSales = BigDecimal.ZERO;
 
         for (Payment p : payments) {
+            // Una venta anulada no entra al arqueo. Su cobro se conserva como
+            // historial, pero el dinero ya no esta en la caja.
+            if (p.getOrder() != null && p.getOrder().getStatus() == OrderStatus.CANCELADO) {
+                continue;
+            }
             String m = p.getPaymentMethod() != null ? p.getPaymentMethod().getName().toUpperCase() : "";
             if (m.contains("EFECTIVO")) cashSales = cashSales.add(p.getAmount());
             else if (m.contains("TARJETA")) cardSales = cardSales.add(p.getAmount());

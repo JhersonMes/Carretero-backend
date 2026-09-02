@@ -81,6 +81,24 @@ public class Order {
     @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     private List<OrderDetail> details = new ArrayList<>();
 
+    /**
+     * Quien anulo la venta, cuando y por que.
+     *
+     * Una venta anulada no se borra: la fila queda en CANCELADO con estos datos.
+     * Borrarla dejaria un hueco en los correlativos del dia y haria imposible
+     * explicar despues por que la caja cerro con menos de lo vendido.
+     */
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "id_cancelled_by",
+            foreignKey = @ForeignKey(name = "FK_ORDER_CANCELLED_BY"))
+    private User cancelledBy;
+
+    @Column(name = "cancelled_at")
+    private LocalDateTime cancelledAt;
+
+    @Column(name = "cancel_reason", length = 300)
+    private String cancelReason;
+
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
 

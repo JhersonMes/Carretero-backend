@@ -3,12 +3,15 @@ package com.carretero.service.implementation;
 import com.carretero.dto.OrderCreateRequestDTO;
 import com.carretero.exception.ModelNotFoundException;
 import com.carretero.model.*;
+import com.carretero.model.enums.CashShiftStatus;
 import com.carretero.model.enums.KitchenStation;
 import com.carretero.model.enums.OrderItemStatus;
 import com.carretero.model.enums.OrderStatus;
 import com.carretero.model.enums.OrderType;
+import com.carretero.model.enums.SunatStatus;
 import com.carretero.model.enums.TableStatus;
 import com.carretero.repository.*;
+import com.carretero.service.IBusinessConfigService;
 import com.carretero.service.ICashShiftService;
 import com.carretero.service.IOrderService;
 import lombok.RequiredArgsConstructor;
@@ -34,7 +37,10 @@ public class OrderService extends GenericService<Order, Integer> implements IOrd
     private final IClientRepository clientRepo;
     private final IAddressRepository addressRepo;
     private final IFlavorRepository flavorRepo;
+    private final IPaymentRepository paymentRepo;
+    private final IInvoiceRepository invoiceRepo;
     private final ICashShiftService cashShiftService;
+    private final IBusinessConfigService businessConfigService;
 
     @Override
     protected IGenericRepository<Order, Integer> getRepo() {
@@ -83,6 +89,11 @@ public class OrderService extends GenericService<Order, Integer> implements IOrd
             Address address = addressRepo.findById(request.getIdAddress())
                     .orElseThrow(() -> new ModelNotFoundException("Dirección no encontrada: " + request.getIdAddress()));
             order.setDeliveryAddress(address);
+            // La tarifa la fija el jiron al que se reparte. Si la venta no manda una
+            // propia, se cobra la que quedo guardada junto con la direccion.
+            if (request.getDeliveryFee() == null && address.getDeliveryFee() != null) {
+                order.setDeliveryFee(address.getDeliveryFee());
+            }
         }
 
         List<OrderDetail> details = new ArrayList<>();
@@ -157,6 +168,138 @@ public class OrderService extends GenericService<Order, Integer> implements IOrd
 
         recalculateOrderTotals(order);
         return repo.save(order);
+    }
+
+    /**
+     * Anula una venta ya cobrada.
+     *
+     * No borra nada: el pedido queda CANCELADO con quien lo anulo, cuando y por
+     * que; los cobros siguen en su turno pero dejan de sumar al arqueo, y el
+     * comprobante queda ANULADO. Asi la caja cuadra y despues se puede explicar
+     * cada anulacion, que es justo lo que un borrado haria imposible.
+     *
+     * El PIN lo valida el servidor. Es lo unico que separa a cualquiera de poder
+     * deshacer una venta cobrada, y comprobarlo en la pantalla no protege nada.
+     */
+    @Override
+    @Transactional
+    public Order cancelOrder(Integer idOrder, String pin, String reason, User user) throws Exception {
+        if (!businessConfigService.matchesAdminPin(pin)) {
+            throw new IllegalArgumentException("El PIN de autorizacion no es correcto.");
+        }
+
+        Order order = repo.findByIdWithDetails(idOrder)
+                .orElseThrow(() -> new ModelNotFoundException("Pedido no encontrado: " + idOrder));
+
+        if (order.getStatus() == OrderStatus.CANCELADO) {
+            throw new IllegalStateException("El pedido " + order.getOrderCode() + " ya estaba anulado.");
+        }
+
+        // Un turno cerrado ya fue arqueado y su plata contada: tocarlo cambiaria
+        // un cuadre que alguien ya firmo.
+        List<Payment> payments = paymentRepo.findByOrderIdOrder(idOrder);
+        for (Payment payment : payments) {
+            CashShift shift = payment.getCashShift();
+            if (shift != null && shift.getStatus() == CashShiftStatus.CERRADA) {
+                throw new IllegalStateException(
+                        "El pedido " + order.getOrderCode() + " se cobro en un turno de caja ya cerrado "
+                                + "y no se puede anular. Registra la devolucion como movimiento de caja.");
+            }
+        }
+
+        order.setStatus(OrderStatus.CANCELADO);
+        order.setCancelledBy(user);
+        order.setCancelledAt(LocalDateTime.now());
+        order.setCancelReason(reason != null && !reason.isBlank() ? reason.trim() : null);
+
+        // La mesa vuelve a estar libre si no le queda ningun otro pedido abierto.
+        if (order.getTable() != null) {
+            List<Order> activeTableOrders = repo.findByTableIdTableAndStatusNotIn(
+                    order.getTable().getIdTable(),
+                    List.of(OrderStatus.PAGADO, OrderStatus.CANCELADO));
+            if (activeTableOrders.stream().noneMatch(o -> !o.getIdOrder().equals(idOrder))) {
+                DiningTable table = order.getTable();
+                table.setStatus(TableStatus.LIBRE);
+                tableRepo.save(table);
+            }
+        }
+
+        Order saved = repo.save(order);
+
+        // El comprobante de una venta anulada no puede seguir vigente.
+        invoiceRepo.findByOrderIdOrderAndSunatStatusNot(idOrder, SunatStatus.ANULADO)
+                .forEach(invoice -> {
+                    invoice.setSunatStatus(SunatStatus.ANULADO);
+                    invoice.setSunatDescription("Anulado junto con el pedido " + order.getOrderCode());
+                    invoiceRepo.save(invoice);
+                });
+
+        // Los cobros anulados dejan de contar en el turno; el recalculo los excluye.
+        for (Payment payment : payments) {
+            if (payment.getCashShift() != null) {
+                cashShiftService.recalculateShiftTotals(payment.getCashShift().getIdCashShift());
+            }
+        }
+
+        return saved;
+    }
+
+    /**
+     * Quita un plato de un pedido ya enviado y recalcula la cuenta.
+     *
+     * Es para el error de comanda: se mando algo que el cliente no pidio. Pide
+     * PIN porque baja el monto de una cuenta abierta y porque el plato pudo
+     * haberse cocinado ya; agregar, en cambio, no lo pide.
+     */
+    @Override
+    @Transactional
+    public Order removeItem(Integer idOrderDetail, String pin, User user) throws Exception {
+        if (!businessConfigService.matchesAdminPin(pin)) {
+            throw new IllegalArgumentException("El PIN de autorizacion no es correcto.");
+        }
+
+        OrderDetail detail = orderDetailRepo.findById(idOrderDetail)
+                .orElseThrow(() -> new ModelNotFoundException("Item de pedido no encontrado: " + idOrderDetail));
+
+        Order order = repo.findByIdWithDetails(detail.getOrder().getIdOrder())
+                .orElseThrow(() -> new ModelNotFoundException("Pedido no encontrado"));
+
+        if (order.getStatus() == OrderStatus.PAGADO || order.getStatus() == OrderStatus.CANCELADO) {
+            throw new IllegalStateException(
+                    "El pedido " + order.getOrderCode() + " ya esta cerrado: no se le pueden quitar platos.");
+        }
+
+        // Vaciar el pedido plato por plato dejaria una mesa ocupada por una cuenta
+        // en cero. Si no queda nada que servir, lo que corresponde es anularlo.
+        if (order.getDetails().size() <= 1) {
+            throw new IllegalStateException(
+                    "Es el unico plato del pedido. Para dejarlo sin nada, anula el pedido completo.");
+        }
+
+        order.getDetails().removeIf(d -> d.getIdOrderDetail().equals(idOrderDetail));
+        orderDetailRepo.delete(detail);
+
+        recalculateOrderTotals(order);
+        return repo.save(order);
+    }
+
+    /**
+     * Nota del plato (ej. "sin aji"). No pide PIN: no toca el monto y suele ser
+     * justamente lo que hay que corregir a ultimo momento.
+     */
+    @Override
+    @Transactional
+    public OrderDetail updateItemNotes(Integer idOrderDetail, String notes) throws Exception {
+        OrderDetail detail = orderDetailRepo.findById(idOrderDetail)
+                .orElseThrow(() -> new ModelNotFoundException("Item de pedido no encontrado: " + idOrderDetail));
+
+        detail.setNotes(notes != null && !notes.isBlank() ? notes.trim() : null);
+        return orderDetailRepo.save(detail);
+    }
+
+    @Override
+    public List<Order> findCancelledOrders() {
+        return repo.findByStatusWithDetails(OrderStatus.CANCELADO);
     }
 
     @Override

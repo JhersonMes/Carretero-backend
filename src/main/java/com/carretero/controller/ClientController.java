@@ -50,20 +50,20 @@ public class ClientController {
     @GetMapping("/{id}")
     public ResponseEntity<ClientDTO> findById(@PathVariable("id") Integer id) throws Exception {
         Client obj = service.findById(id);
-        return ResponseEntity.ok(mapToDTO(obj));
+        return ResponseEntity.ok(mapToDTOWithAddresses(obj));
     }
 
     @GetMapping("/doc/{docNumber}")
     public ResponseEntity<ClientDTO> findByDoc(@PathVariable("docNumber") String docNumber) {
         return service.findByDocNumber(docNumber)
-                .map(client -> ResponseEntity.ok(mapToDTO(client)))
+                .map(client -> ResponseEntity.ok(mapToDTOWithAddresses(client)))
                 .orElse(ResponseEntity.notFound().build());
     }
 
     @GetMapping("/phone/{phone}")
     public ResponseEntity<ClientDTO> findByPhone(@PathVariable("phone") String phone) {
         return service.findByPhone(phone)
-                .map(client -> ResponseEntity.ok(mapToDTO(client)))
+                .map(client -> ResponseEntity.ok(mapToDTOWithAddresses(client)))
                 .orElse(ResponseEntity.notFound().build());
     }
 
@@ -110,14 +110,23 @@ public class ClientController {
         return ResponseEntity.ok(service.listPage(pageable));
     }
 
+    /**
+     * Cliente sin sus direcciones. Los listados no las necesitan y cargarlas una
+     * por cliente costaria una consulta extra por fila; quien las quiere las pide
+     * en /clients/{id}/addresses.
+     */
     private ClientDTO mapToDTO(Client client) {
         if (client == null) return null;
-        ClientDTO dto = modelMapper.map(client, ClientDTO.class);
-        if (client.getAddresses() != null) {
-            dto.setAddresses(client.getAddresses().stream()
-                    .map(a -> addressMapper.map(a, AddressDTO.class))
-                    .toList());
-        }
+        return modelMapper.map(client, ClientDTO.class);
+    }
+
+    /** Cliente con sus direcciones, para cuando se consulta uno solo. */
+    private ClientDTO mapToDTOWithAddresses(Client client) {
+        if (client == null) return null;
+        ClientDTO dto = mapToDTO(client);
+        dto.setAddresses(addressService.findByClientId(client.getIdClient()).stream()
+                .map(a -> addressMapper.map(a, AddressDTO.class))
+                .toList());
         return dto;
     }
 }

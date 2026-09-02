@@ -105,13 +105,26 @@ public class PaymentService extends GenericService<Payment, Integer> implements 
         return createdPayments;
     }
 
+    // Las tres lecturas traen el pedido en la misma consulta: el DTO del cobro
+    // expone el codigo del pedido, y el pedido es LAZY.
+
+    @Override
+    public List<Payment> findAll() {
+        return repo.findAllWithOrder();
+    }
+
     @Override
     public List<Payment> findByOrderId(Integer idOrder) {
-        return repo.findByOrderIdOrder(idOrder);
+        return repo.findByOrderWithOrder(idOrder);
     }
 
     @Override
     public List<Payment> findByCashShiftId(Integer idCashShift) {
-        return repo.findByCashShiftIdCashShift(idCashShift);
+        return repo.findByShiftWithOrder(idCashShift);
+    }
+
+    @Override
+    public List<Payment> findByCashShiftAndUser(Integer idCashShift, Integer idUser) {
+        return repo.findByShiftAndUserWithOrder(idCashShift, idUser);
     }
 }

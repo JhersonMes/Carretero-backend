@@ -150,6 +150,70 @@ public class OrderController {
         return ResponseEntity.ok(mapToDTO(updated));
     }
 
+    /**
+     * Anula una venta. El PIN viaja en el cuerpo y lo valida el servicio; el
+     * usuario que anula sale de la sesion, no del cliente.
+     */
+    @PostMapping("/{id}/cancel")
+    @PreAuthorize("hasAuthority('ADMIN') or hasAuthority('MESERO') or hasAuthority('CAJERO')")
+    public ResponseEntity<OrderDTO> cancelOrder(
+            @PathVariable("id") Integer id,
+            @RequestBody Map<String, String> body) throws Exception {
+        String username = SecurityContextHolder.getContext().getAuthentication().getName();
+        User currentUser = userRepo.findOneByUsername(username);
+
+        Order cancelled = service.cancelOrder(id, body.get("pin"), body.get("reason"), currentUser);
+        notifyKitchen();
+        return ResponseEntity.ok(mapToDTO(cancelled));
+    }
+
+    /**
+     * Quita un plato de un pedido abierto. El PIN va por parametro porque un
+     * DELETE con cuerpo no lo soportan bien todos los clientes HTTP.
+     */
+    @DeleteMapping("/items/{idOrderDetail}")
+    @PreAuthorize("hasAuthority('ADMIN') or hasAuthority('MESERO') or hasAuthority('CAJERO')")
+    public ResponseEntity<OrderDTO> removeItem(
+            @PathVariable("idOrderDetail") Integer idOrderDetail,
+            @RequestParam("pin") String pin) throws Exception {
+        String username = SecurityContextHolder.getContext().getAuthentication().getName();
+        User currentUser = userRepo.findOneByUsername(username);
+
+        Order order = service.removeItem(idOrderDetail, pin, currentUser);
+        notifyKitchen();
+        return ResponseEntity.ok(mapToDTO(order));
+    }
+
+    /** Nota del plato: "sin aji", "para llevar". No mueve el monto. */
+    @PatchMapping("/items/{idOrderDetail}/notes")
+    public ResponseEntity<OrderDetailDTO> updateItemNotes(
+            @PathVariable("idOrderDetail") Integer idOrderDetail,
+            @RequestBody Map<String, String> body) throws Exception {
+        OrderDetail updated = service.updateItemNotes(idOrderDetail, body.get("notes"));
+        notifyKitchen();
+        return ResponseEntity.ok(new OrderDetailDTO(
+                updated.getIdOrderDetail(),
+                updated.getProduct() != null ? updated.getProduct().getIdProduct() : null,
+                updated.getProductName(),
+                updated.getQuantity(),
+                updated.getUnitPrice(),
+                updated.getFlavorName(),
+                updated.getNotes(),
+                updated.getSubtotal(),
+                updated.getItemStatus()
+        ));
+    }
+
+    /** Ventas anuladas, para el panel de administracion. */
+    @GetMapping("/cancelled")
+    @PreAuthorize("hasAuthority('ADMIN')")
+    public ResponseEntity<List<OrderDTO>> findCancelled() {
+        List<OrderDTO> list = service.findCancelledOrders().stream()
+                .map(this::mapToDTO)
+                .toList();
+        return ResponseEntity.ok(list);
+    }
+
     @PatchMapping("/items/{idOrderDetail}/status")
     public ResponseEntity<OrderDetailDTO> updateItemStatus(
             @PathVariable("idOrderDetail") Integer idOrderDetail,
@@ -216,6 +280,11 @@ public class OrderController {
         if (order.getDeliveryAddress() != null) {
             dto.setDeliveryAddress(addressMapper.map(order.getDeliveryAddress(), AddressDTO.class));
         }
+        if (order.getCancelledBy() != null) {
+            dto.setCancelledBy(userMapper.map(order.getCancelledBy(), UserDTO.class));
+        }
+        dto.setCancelledAt(order.getCancelledAt());
+        dto.setCancelReason(order.getCancelReason());
         if (order.getDetails() != null) {
             dto.setDetails(order.getDetails().stream()
                     .map(d -> new OrderDetailDTO(

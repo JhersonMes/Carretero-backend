@@ -406,16 +406,22 @@ public class DataInitializer implements CommandLineRunner {
     private void initConfig() {
         if (configRepo.count() == 0) {
             BusinessConfig config = new BusinessConfig();
-            config.setBusinessName("EL CARRETERO");
-            config.setCommercialName("EL CARRETERO BURGERS & WINGS");
-            config.setRuc("20601234567");
-            config.setAddress("Av. Principal 456, Lima");
-            config.setPhone("987654321");
+            // Datos de la ficha RUC de SUNAT: son los que encabezan cada boleta,
+            // asi que van tal como estan inscritos y no con un nombre de fantasia.
+            config.setBusinessName("EL CARRETERO E.I.R.L.");
+            config.setCommercialName("EL CARRETERO");
+            config.setRuc("20610046097");
+            config.setAddress("Jr. Irene Silva Nro. 183, Urb. Horacio Zevallos - Cajamarca");
+            config.setPhone("993793724");
             config.setEmail("contacto@elcarretero.pe");
             config.setBoletaSeries("B001");
             config.setFacturaSeries("F001");
             config.setNotaVentaSeries("NV01");
+            // PIN que autoriza anular o corregir una venta. Se guarda cifrado y
+            // solo se puede reemplazar, nunca consultar.
+            config.setAdminPin(passwordEncoder.encode("5555"));
             configRepo.save(config);
+            log.warn("PIN de anulacion inicial: 5555. Cambialo desde PUT /business-config/admin-pin.");
             log.info("Configuración general inicial de El Carretero registrada.");
         }
     }

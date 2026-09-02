@@ -37,6 +37,16 @@ public class BusinessConfig {
     @Column(length = 100)
     private String email;
 
+    /**
+     * PIN que autoriza anular una venta o reemitir su comprobante.
+     *
+     * Se guarda cifrado, igual que las contrasenas: quien tenga acceso a la base
+     * no debe poder leer el codigo con el que se anulan ventas. Por eso tampoco
+     * viaja nunca en el DTO de configuracion.
+     */
+    @Column(name = "admin_pin", length = 200)
+    private String adminPin;
+
     // Series de facturación
     @Column(length = 10)
     private String boletaSeries = "B001";
