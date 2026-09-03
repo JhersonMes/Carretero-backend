@@ -6,6 +6,7 @@ import com.carretero.model.Client;
 import com.carretero.model.Invoice;
 import com.carretero.model.enums.DocumentType;
 import com.carretero.model.enums.InvoiceType;
+import com.carretero.model.enums.SunatEnvironment;
 import com.carretero.model.enums.SunatStatus;
 import com.carretero.repository.IBusinessConfigRepository;
 import com.carretero.repository.IClientRepository;
@@ -19,7 +20,6 @@ import org.springframework.web.client.RestTemplate;
 
 import java.util.Map;
 import java.util.Optional;
-import java.util.UUID;
 
 @Slf4j
 @Service
@@ -123,67 +123,103 @@ public class SunatService implements ISunatService {
         );
     }
 
+    /**
+     * Deja el comprobante con el estado que le corresponde segun su envio.
+     *
+     * Mientras la tuberia de emision electronica no exista (F1-1 a F1-5 del plan
+     * de implementacion), este metodo no puede devolver ACEPTADO: un comprobante
+     * que nadie envio no fue aceptado por nadie. El estado y el cdrHash son los
+     * dos campos con los que despues se sabe que quedo sin declarar, y llenarlos
+     * con datos inventados los vuelve inservibles justo cuando hacen falta.
+     */
     @Override
     public Invoice dispatchToSunat(Invoice invoice) {
+        // La nota de venta es un documento interno del local: no se declara nunca.
         if (invoice.getInvoiceType() == InvoiceType.NOTA_VENTA) {
             invoice.setSunatStatus(SunatStatus.NO_ENVIADO);
-            invoice.setSunatDescription("Nota de venta interna (sin envío a SUNAT)");
+            invoice.setSunatResponseCode(null);
+            invoice.setSunatDescription("Nota de venta interna (no se declara a SUNAT)");
+            invoice.setCdrHash(null);
             return invoice;
         }
 
-        Optional<BusinessConfig> configOpt = businessConfigRepository.findFirstByActiveTrue();
-        if (configOpt.isPresent() && configOpt.get().getSunatApiToken() != null && !configOpt.get().getSunatApiToken().trim().isEmpty()) {
-            BusinessConfig config = configOpt.get();
-            try {
-                // Aquí se envía al API PSE / Facturador configurado
-                log.info("Despachando comprobante {} a la API SUNAT/PSE...", invoice.getFullNumber());
-                // En un entorno de producción con token activo se realiza la llamada REST al PSE
-                invoice.setSunatStatus(SunatStatus.ACEPTADO);
-                invoice.setSunatResponseCode("0");
-                invoice.setSunatDescription("El comprobante fue aceptado correctamente por SUNAT");
-                invoice.setCdrHash(UUID.randomUUID().toString().substring(0, 20));
-                invoice.setQrData(String.format("%s|%s|%s|%s|%s|%s|%s|%s|%s",
-                        config.getRuc(),
-                        invoice.getInvoiceType() == InvoiceType.FACTURA ? "01" : "03",
-                        invoice.getSeries(),
-                        invoice.getCorrelativeNumber(),
-                        invoice.getIgvAmount(),
-                        invoice.getTotalAmount(),
-                        invoice.getIssueDate().toLocalDate(),
-                        invoice.getClient() != null ? invoice.getClient().getDocType() : "0",
-                        invoice.getClient() != null ? invoice.getClient().getDocNumber() : "-"
-                ));
-                return invoice;
-            } catch (Exception e) {
-                log.error("Error al enviar comprobante a SUNAT: {}", e.getMessage());
+        BusinessConfig config = businessConfigRepository.findFirstByActiveTrue().orElse(null);
+        SunatEnvironment environment = (config != null && config.getSunatEnvironment() != null)
+                ? config.getSunatEnvironment()
+                : SunatEnvironment.SIMULADO;
+
+        // El QR se arma con los datos del propio comprobante, no con la respuesta
+        // de SUNAT: va impreso en el ticket se haya enviado o no.
+        invoice.setQrData(buildQrData(invoice, config));
+
+        // Ninguno de los caminos de abajo tiene CDR todavia. Se limpia de forma
+        // explicita porque una reemision reutiliza el objeto.
+        invoice.setCdrHash(null);
+        invoice.setSunatResponseCode(null);
+
+        switch (environment) {
+            case BETA, PRODUCCION -> {
+                // Configurado para enviar, pero el envio aun no esta construido.
+                // PENDIENTE es lo correcto: queda en la lista de lo que falta
+                // declarar en vez de desaparecer como si estuviera resuelto.
                 invoice.setSunatStatus(SunatStatus.PENDIENTE);
-                invoice.setSunatDescription("Error temporal de conexión con el proveedor OSE/SUNAT. Pendiente de reintento.");
-                return invoice;
+                invoice.setSunatDescription(
+                        "Pendiente de envio: la emision electronica contra " + environment
+                                + " todavia no esta implementada.");
+                log.warn("Comprobante {} queda PENDIENTE: ambiente {} configurado, sin tuberia de envio.",
+                        invoice.getFullNumber(), environment);
+            }
+            default -> {
+                invoice.setSunatStatus(SunatStatus.SIMULADO);
+                invoice.setSunatDescription("Modo local: comprobante no enviado a SUNAT");
             }
         }
 
-        // Modo local / desarrollo / sin token PSE configurado
-        invoice.setSunatStatus(SunatStatus.ACEPTADO);
-        invoice.setSunatResponseCode("0");
-        invoice.setSunatDescription("Comprobante generado y validado en modo local (PSE de prueba)");
-        invoice.setCdrHash(UUID.randomUUID().toString().substring(0, 20));
+        return invoice;
+    }
 
-        // El QR abre con el RUC del emisor. Antes iba uno de relleno, que en una
-        // boleta impresa se lee como si el comprobante fuera de otra empresa.
-        String issuerRuc = configOpt.map(BusinessConfig::getRuc)
-                .filter(ruc -> ruc != null && !ruc.isBlank())
-                .orElse("00000000000");
+    /**
+     * Cadena del codigo QR del comprobante, en el orden que define SUNAT:
+     * RUC | tipo | serie | correlativo | IGV | total | fecha | tipo doc. | nro. doc.
+     *
+     * Antes habia dos formatos distintos segun la rama que se tomara, uno de siete
+     * campos y otro de nueve. Dos comprobantes del mismo tipo salian impresos con
+     * QR de formato distinto segun como estuviera configurado el sistema ese dia.
+     */
+    private String buildQrData(Invoice invoice, BusinessConfig config) {
+        String issuerRuc = (config != null && config.getRuc() != null && !config.getRuc().isBlank())
+                ? config.getRuc()
+                : "00000000000";
 
-        invoice.setQrData(String.format("%s|%s|%s|%d|%.2f|%.2f|%s",
+        Client buyer = invoice.getClient();
+        String buyerDocType = sunatDocCode(buyer != null ? buyer.getDocType() : null);
+        String buyerDocNumber = (buyer != null && buyer.getDocNumber() != null && !buyer.getDocNumber().isBlank())
+                ? buyer.getDocNumber()
+                : "-";
+
+        return String.format("%s|%s|%s|%08d|%.2f|%.2f|%s|%s|%s",
                 issuerRuc,
                 invoice.getInvoiceType() == InvoiceType.FACTURA ? "01" : "03",
                 invoice.getSeries(),
                 invoice.getCorrelativeNumber(),
                 invoice.getIgvAmount(),
                 invoice.getTotalAmount(),
-                invoice.getIssueDate().toLocalDate()
-        ));
+                invoice.getIssueDate().toLocalDate(),
+                buyerDocType,
+                buyerDocNumber);
+    }
 
-        return invoice;
+    /** Codigo con el que SUNAT identifica el documento del adquirente. */
+    private String sunatDocCode(DocumentType type) {
+        if (type == null) {
+            return "0";
+        }
+        return switch (type) {
+            case DNI -> "1";
+            case CE -> "4";
+            case RUC -> "6";
+            case PASAPORTE -> "7";
+            case SIN_DOC -> "0";
+        };
     }
 }

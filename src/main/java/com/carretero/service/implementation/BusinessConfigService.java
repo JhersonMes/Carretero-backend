@@ -40,6 +40,13 @@ public class BusinessConfigService extends GenericService<BusinessConfig, Intege
         if (config.getAdminPin() == null || config.getAdminPin().isBlank()) {
             config.setAdminPin(existing.getAdminPin());
         }
+        // Mismo caso que el PIN: si el guardado llega sin ambiente, se conserva el
+        // que estaba. Editar el telefono del local no puede devolver a SIMULADO un
+        // negocio que ya emite en produccion, porque dejaria de declarar sin que
+        // nadie lo note.
+        if (config.getSunatEnvironment() == null) {
+            config.setSunatEnvironment(existing.getSunatEnvironment());
+        }
         return repo.save(config);
     }
 
