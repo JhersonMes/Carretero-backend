@@ -84,8 +84,9 @@ class OrderServiceTest {
         dto.setDeliveryFee(BigDecimal.ZERO);
         dto.setItems(List.of(
                 // Sin sabor: estos productos no lo exigen (idFlavor y flavorName van nulos).
-                new OrderCreateRequestDTO.OrderItemRequestDTO(1, 2, null, null, "Sin cebolla"), // 2 * 16.00 = 32.00
-                new OrderCreateRequestDTO.OrderItemRequestDTO(2, 1, null, null, "Helada")      // 1 * 10.00 = 10.00
+                // Sin area propia: cada item sale a la de su producto.
+                new OrderCreateRequestDTO.OrderItemRequestDTO(1, 2, null, null, null, "Sin cebolla"), // 2 * 16.00 = 32.00
+                new OrderCreateRequestDTO.OrderItemRequestDTO(2, 1, null, null, null, "Helada")      // 1 * 10.00 = 10.00
         )); // Subtotal = 42.00, Total = 42.00 - 2.00 = 40.00
 
         Order created = orderService.createOrder(dto, mockUser);

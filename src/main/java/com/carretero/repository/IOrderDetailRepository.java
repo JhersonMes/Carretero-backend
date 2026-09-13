@@ -19,10 +19,23 @@ public interface IOrderDetailRepository extends IGenericRepository<OrderDetail, 
      * estacion, aunque su propio itemStatus siga en PENDIENTE.
      */
     @Query("SELECT d FROM OrderDetail d JOIN FETCH d.order o LEFT JOIN FETCH o.table " +
-            "WHERE d.itemStatus IN :statuses AND d.product.station = :station " +
+            "WHERE d.itemStatus IN :statuses " +
+            "AND COALESCE(d.station, d.product.station) = :station " +
             "AND o.status NOT IN :excludedOrderStatuses " +
             "ORDER BY o.createdAt ASC")
     List<OrderDetail> findPendingByStation(@Param("statuses") List<OrderItemStatus> statuses,
                                             @Param("station") KitchenStation station,
                                             @Param("excludedOrderStatuses") List<OrderStatus> excludedOrderStatuses);
+
+    /**
+     * Unidades vendidas por producto, para ordenar las sugerencias del buscador.
+     *
+     * Es una sola agregacion sobre los detalles, no una consulta por producto:
+     * la pantalla la pide una vez al abrirse y con eso ordena todo lo que el
+     * usuario teclee despues, sin volver al servidor.
+     */
+    @Query("SELECT d.product.idProduct, SUM(d.quantity) FROM OrderDetail d " +
+            "WHERE d.order.status <> com.carretero.model.enums.OrderStatus.CANCELADO " +
+            "GROUP BY d.product.idProduct")
+    List<Object[]> sumSoldUnitsByProduct();
 }

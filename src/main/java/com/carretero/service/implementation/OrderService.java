@@ -62,13 +62,13 @@ public class OrderService extends GenericService<Order, Integer> implements IOrd
         order.setDeliveryFee(request.getDeliveryFee() != null ? request.getDeliveryFee() : BigDecimal.ZERO);
         order.setDiscount(request.getDiscount() != null ? request.getDiscount() : BigDecimal.ZERO);
 
-        // Generar código de pedido del día ej. PED-20260823-0001
+        // Generar cÃ³digo de pedido del dÃ­a ej. PED-20260823-0001
         LocalDateTime startOfDay = LocalDate.now().atStartOfDay();
         Long countToday = repo.countOrdersToday(startOfDay);
         String dateStr = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
         order.setOrderCode(String.format("PED-%s-%04d", dateStr, countToday + 1));
 
-        // Asignar Mesa si es Salón
+        // Asignar Mesa si es SalÃ³n
         if (order.getSaleType() == OrderType.SALON && request.getIdTable() != null) {
             DiningTable table = tableRepo.findById(request.getIdTable())
                     .orElseThrow(() -> new ModelNotFoundException("Mesa no encontrada: " + request.getIdTable()));
@@ -77,17 +77,17 @@ public class OrderService extends GenericService<Order, Integer> implements IOrd
             order.setTable(table);
         }
 
-        // Asignar Cliente si se especificó
+        // Asignar Cliente si se especificÃ³
         if (request.getIdClient() != null) {
             Client client = clientRepo.findById(request.getIdClient())
                     .orElseThrow(() -> new ModelNotFoundException("Cliente no encontrado: " + request.getIdClient()));
             order.setClient(client);
         }
 
-        // Asignar Dirección si es Delivery
+        // Asignar DirecciÃ³n si es Delivery
         if (order.getSaleType() == OrderType.DELIVERY && request.getIdAddress() != null) {
             Address address = addressRepo.findById(request.getIdAddress())
-                    .orElseThrow(() -> new ModelNotFoundException("Dirección no encontrada: " + request.getIdAddress()));
+                    .orElseThrow(() -> new ModelNotFoundException("DirecciÃ³n no encontrada: " + request.getIdAddress()));
             order.setDeliveryAddress(address);
             // La tarifa la fija el jiron al que se reparte. Si la venta no manda una
             // propia, se cobra la que quedo guardada junto con la direccion.
@@ -112,6 +112,7 @@ public class OrderService extends GenericService<Order, Integer> implements IOrd
             detail.setQuantity(itemReq.getQuantity());
             detail.setUnitPrice(unitPrice);
             detail.setFlavorName(itemReq.getFlavorName());
+            detail.setStation(itemReq.getStation());
             detail.setNotes(itemReq.getNotes());
 
             BigDecimal itemSubtotal = unitPrice.multiply(BigDecimal.valueOf(itemReq.getQuantity()));
@@ -155,6 +156,7 @@ public class OrderService extends GenericService<Order, Integer> implements IOrd
             detail.setQuantity(itemReq.getQuantity());
             detail.setUnitPrice(unitPrice);
             detail.setFlavorName(itemReq.getFlavorName());
+            detail.setStation(itemReq.getStation());
             detail.setNotes(itemReq.getNotes());
 
             BigDecimal itemSubtotal = unitPrice.multiply(BigDecimal.valueOf(itemReq.getQuantity()));
@@ -310,7 +312,7 @@ public class OrderService extends GenericService<Order, Integer> implements IOrd
 
         order.setStatus(status);
 
-        // Si el pedido se pagó o se canceló y estaba en una mesa, liberar la mesa si no hay más pedidos activos
+        // Si el pedido se pagÃ³ o se cancelÃ³ y estaba en una mesa, liberar la mesa si no hay mÃ¡s pedidos activos
         if ((status == OrderStatus.PAGADO || status == OrderStatus.CANCELADO) && order.getTable() != null) {
             List<Order> activeTableOrders = repo.findByTableIdTableAndStatusNotIn(
                     order.getTable().getIdTable(),
@@ -383,7 +385,7 @@ public class OrderService extends GenericService<Order, Integer> implements IOrd
     @Override
     public Order findByOrderCode(String orderCode) throws Exception {
         return repo.findByOrderCodeWithDetails(orderCode)
-                .orElseThrow(() -> new ModelNotFoundException("Pedido no encontrado con código: " + orderCode));
+                .orElseThrow(() -> new ModelNotFoundException("Pedido no encontrado con cÃ³digo: " + orderCode));
     }
 
     @Override

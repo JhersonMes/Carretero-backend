@@ -38,6 +38,9 @@ public class ProductDTO {
 
     private boolean requiresFlavor = false;
 
+    /** El area que lo prepara se elige al pedirlo (caso tipico: los adicionales). */
+    private boolean requiresStation = false;
+
     private boolean active = true;
 
     private boolean manageStock = false;

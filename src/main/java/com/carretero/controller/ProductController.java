@@ -98,6 +98,15 @@ public class ProductController {
         return ResponseEntity.ok(modelMapper.map(obj, ProductDTO.class));
     }
 
+    /**
+     * Unidades vendidas por producto. La pantalla de precios la pide una vez al
+     * abrirse para ordenar las sugerencias del buscador.
+     */
+    @GetMapping("/sold-units")
+    public ResponseEntity<Map<Integer, Long>> soldUnits() {
+        return ResponseEntity.ok(service.getSoldUnitsByProduct());
+    }
+
     @GetMapping("/{id}/price-history")
     public ResponseEntity<List<PriceHistoryDTO>> getPriceHistory(@PathVariable("id") Integer id) {
         List<PriceHistoryDTO> list = service.getPriceHistories(id).stream()

@@ -198,6 +198,7 @@ public class OrderController {
                 updated.getQuantity(),
                 updated.getUnitPrice(),
                 updated.getFlavorName(),
+                updated.getStation(),
                 updated.getNotes(),
                 updated.getSubtotal(),
                 updated.getItemStatus()
@@ -230,6 +231,7 @@ public class OrderController {
                 updated.getQuantity(),
                 updated.getUnitPrice(),
                 updated.getFlavorName(),
+                updated.getStation(),
                 updated.getNotes(),
                 updated.getSubtotal(),
                 updated.getItemStatus()
@@ -294,6 +296,7 @@ public class OrderController {
                             d.getQuantity(),
                             d.getUnitPrice(),
                             d.getFlavorName(),
+                            d.getStation(),
                             d.getNotes(),
                             d.getSubtotal(),
                             d.getItemStatus()

@@ -6,6 +6,7 @@ import com.carretero.model.Product;
 import com.carretero.model.User;
 import com.carretero.model.enums.KitchenStation;
 import com.carretero.repository.IGenericRepository;
+import com.carretero.repository.IOrderDetailRepository;
 import com.carretero.repository.IPriceHistoryRepository;
 import com.carretero.repository.IProductRepository;
 import com.carretero.service.IProductService;
@@ -14,7 +15,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
@@ -22,6 +25,22 @@ public class ProductService extends GenericService<Product, Integer> implements 
 
     private final IProductRepository repo;
     private final IPriceHistoryRepository priceHistoryRepo;
+    private final IOrderDetailRepository orderDetailRepo;
+
+    /**
+     * Unidades vendidas por producto. Alimenta el orden de las sugerencias del
+     * buscador de la carta: ante dos productos que calzan igual con lo tecleado,
+     * primero va el que mas se vende.
+     */
+    @Override
+    public Map<Integer, Long> getSoldUnitsByProduct() {
+        Map<Integer, Long> sold = new HashMap<>();
+        for (Object[] row : orderDetailRepo.sumSoldUnitsByProduct()) {
+            if (row[0] == null || row[1] == null) continue;
+            sold.put((Integer) row[0], ((Number) row[1]).longValue());
+        }
+        return sold;
+    }
 
     @Override
     protected IGenericRepository<Product, Integer> getRepo() {

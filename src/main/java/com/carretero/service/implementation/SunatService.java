@@ -10,7 +10,12 @@ import com.carretero.model.enums.SunatEnvironment;
 import com.carretero.model.enums.SunatStatus;
 import com.carretero.repository.IBusinessConfigRepository;
 import com.carretero.repository.IClientRepository;
+import com.carretero.service.IElectronicBillingProvider;
 import com.carretero.service.ISunatService;
+import com.carretero.service.billing.BillingOutcome;
+import com.carretero.service.billing.SimulatedBillingProvider;
+import com.carretero.service.billing.SunatBillingProvider;
+import com.carretero.service.billing.SunatCodes;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.*;
@@ -28,6 +33,12 @@ public class SunatService implements ISunatService {
 
     private final IClientRepository clientRepository;
     private final IBusinessConfigRepository businessConfigRepository;
+
+    // Los dos caminos posibles. Se eligen por ambiente, no por si hay token: ver
+    // BusinessConfig.sunatEnvironment.
+    private final SimulatedBillingProvider simulatedProvider;
+    private final SunatBillingProvider sunatProvider;
+
     private final RestTemplate restTemplate = new RestTemplate();
 
     /**
@@ -124,13 +135,15 @@ public class SunatService implements ISunatService {
     }
 
     /**
-     * Deja el comprobante con el estado que le corresponde segun su envio.
+     * Declara el comprobante y le deja el estado que devolvio el envio.
      *
-     * Mientras la tuberia de emision electronica no exista (F1-1 a F1-5 del plan
-     * de implementacion), este metodo no puede devolver ACEPTADO: un comprobante
-     * que nadie envio no fue aceptado por nadie. El estado y el cdrHash son los
-     * dos campos con los que despues se sabe que quedo sin declarar, y llenarlos
-     * con datos inventados los vuelve inservibles justo cuando hacen falta.
+     * Aqui solo se decide por que camino va y se vuelca el resultado; el trabajo
+     * de armar, firmar y enviar vive detras de {@link IElectronicBillingProvider},
+     * para que cambiar a un PSE contratado no obligue a tocar la facturacion.
+     *
+     * Este metodo no lanza excepcion nunca: el comprobante se emite despues de
+     * cobrar, y una falla al declarar tiene que quedar escrita en el comprobante,
+     * no interrumpir el cobro.
      */
     @Override
     public Invoice dispatchToSunat(Invoice invoice) {
@@ -152,30 +165,38 @@ public class SunatService implements ISunatService {
         // de SUNAT: va impreso en el ticket se haya enviado o no.
         invoice.setQrData(buildQrData(invoice, config));
 
-        // Ninguno de los caminos de abajo tiene CDR todavia. Se limpia de forma
-        // explicita porque una reemision reutiliza el objeto.
-        invoice.setCdrHash(null);
-        invoice.setSunatResponseCode(null);
+        IElectronicBillingProvider provider = (environment == SunatEnvironment.SIMULADO)
+                ? simulatedProvider
+                : sunatProvider;
 
-        switch (environment) {
-            case BETA, PRODUCCION -> {
-                // Configurado para enviar, pero el envio aun no esta construido.
-                // PENDIENTE es lo correcto: queda en la lista de lo que falta
-                // declarar en vez de desaparecer como si estuviera resuelto.
-                invoice.setSunatStatus(SunatStatus.PENDIENTE);
-                invoice.setSunatDescription(
-                        "Pendiente de envio: la emision electronica contra " + environment
-                                + " todavia no esta implementada.");
-                log.warn("Comprobante {} queda PENDIENTE: ambiente {} configurado, sin tuberia de envio.",
-                        invoice.getFullNumber(), environment);
-            }
-            default -> {
-                invoice.setSunatStatus(SunatStatus.SIMULADO);
-                invoice.setSunatDescription("Modo local: comprobante no enviado a SUNAT");
-            }
+        return apply(invoice, provider.send(invoice));
+    }
+
+    /**
+     * Vuelca el resultado del envio sobre el comprobante.
+     *
+     * Las descripciones de SUNAT pueden ser largas y las columnas tienen tope;
+     * se recortan aqui y no en cada proveedor, porque el limite es de la tabla.
+     */
+    private Invoice apply(Invoice invoice, BillingOutcome outcome) {
+        invoice.setSunatStatus(outcome.status());
+        invoice.setSunatResponseCode(truncate(outcome.responseCode(), 20));
+        invoice.setSunatDescription(truncate(outcome.description(), 500));
+        invoice.setCdrHash(outcome.cdrHash());
+
+        // Solo se pisa si hubo XML: un reintento fallido no debe borrar la ruta
+        // del que ya se habia firmado y guardado.
+        if (outcome.xmlPath() != null) {
+            invoice.setXmlUrl(outcome.xmlPath());
         }
-
         return invoice;
+    }
+
+    private String truncate(String value, int max) {
+        if (value == null) {
+            return null;
+        }
+        return value.length() <= max ? value : value.substring(0, max);
     }
 
     /**
@@ -192,34 +213,19 @@ public class SunatService implements ISunatService {
                 : "00000000000";
 
         Client buyer = invoice.getClient();
-        String buyerDocType = sunatDocCode(buyer != null ? buyer.getDocType() : null);
-        String buyerDocNumber = (buyer != null && buyer.getDocNumber() != null && !buyer.getDocNumber().isBlank())
-                ? buyer.getDocNumber()
-                : "-";
+        boolean identified = buyer != null
+                && buyer.getDocNumber() != null
+                && !buyer.getDocNumber().isBlank();
 
         return String.format("%s|%s|%s|%08d|%.2f|%.2f|%s|%s|%s",
                 issuerRuc,
-                invoice.getInvoiceType() == InvoiceType.FACTURA ? "01" : "03",
+                SunatCodes.documentType(invoice.getInvoiceType()),
                 invoice.getSeries(),
                 invoice.getCorrelativeNumber(),
                 invoice.getIgvAmount(),
                 invoice.getTotalAmount(),
                 invoice.getIssueDate().toLocalDate(),
-                buyerDocType,
-                buyerDocNumber);
-    }
-
-    /** Codigo con el que SUNAT identifica el documento del adquirente. */
-    private String sunatDocCode(DocumentType type) {
-        if (type == null) {
-            return "0";
-        }
-        return switch (type) {
-            case DNI -> "1";
-            case CE -> "4";
-            case RUC -> "6";
-            case PASAPORTE -> "7";
-            case SIN_DOC -> "0";
-        };
+                identified ? SunatCodes.identityType(buyer.getDocType()) : "0",
+                identified ? buyer.getDocNumber() : "-");
     }
 }

@@ -47,6 +47,18 @@ public class Product {
     @Column(name = "requires_flavor", nullable = false)
     private boolean requiresFlavor = false;
 
+    /**
+     * Si es true, el area que lo prepara se elige al pedirlo y no esta fijada
+     * aqui. Es el caso de los adicionales: un platano acompana tanto a unas
+     * alitas (cocina) como a una hamburguesa (parrilla), y quien sabe con cual
+     * va es el mesero que toma la orden.
+     *
+     * Se elige una sola area por linea, no las dos: si el item saliera en las
+     * dos pantallas, o lo preparan ambas o ninguna.
+     */
+    @Column(name = "requires_station", nullable = false)
+    private boolean requiresStation = false;
+
     @Column(nullable = false)
     private boolean active = true;
 
