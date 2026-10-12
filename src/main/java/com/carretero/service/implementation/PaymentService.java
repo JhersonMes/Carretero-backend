@@ -44,6 +44,16 @@ public class PaymentService extends GenericService<Payment, Integer> implements 
         Order order = orderRepo.findById(request.getIdOrder())
                 .orElseThrow(() -> new ModelNotFoundException("Pedido no encontrado: " + request.getIdOrder()));
 
+        if (order.getStatus() == OrderStatus.CANCELADO) {
+            throw new IllegalStateException("No se puede cobrar un pedido cancelado: " + order.getOrderCode());
+        }
+
+        Optional<CashShift> activeShiftOpt = cashShiftService.getActiveShift();
+        if (activeShiftOpt.isEmpty()) {
+            throw new IllegalStateException("No hay un turno de caja abierto para registrar el cobro.");
+        }
+        CashShift activeShift = activeShiftOpt.get();
+
         BigDecimal alreadyPaid = repo.findByOrderIdOrder(order.getIdOrder()).stream()
                 .map(Payment::getAmount)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
@@ -57,9 +67,6 @@ public class PaymentService extends GenericService<Payment, Integer> implements 
             throw new IllegalStateException(
                     "El monto ingresado (S/ " + incomingTotal + ") supera el saldo pendiente (S/ " + remaining + ").");
         }
-
-        Optional<CashShift> activeShiftOpt = cashShiftService.getActiveShift();
-        CashShift activeShift = activeShiftOpt.orElse(null);
 
         List<Payment> createdPayments = new ArrayList<>();
         BigDecimal totalPaidNow = BigDecimal.ZERO;

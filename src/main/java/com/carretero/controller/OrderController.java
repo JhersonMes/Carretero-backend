@@ -199,6 +199,7 @@ public class OrderController {
                 updated.getUnitPrice(),
                 updated.getFlavorName(),
                 updated.getStation(),
+                updated.getProduct() != null ? updated.getProduct().getStation() : null,
                 updated.getNotes(),
                 updated.getSubtotal(),
                 updated.getItemStatus()
@@ -232,6 +233,7 @@ public class OrderController {
                 updated.getUnitPrice(),
                 updated.getFlavorName(),
                 updated.getStation(),
+                updated.getProduct() != null ? updated.getProduct().getStation() : null,
                 updated.getNotes(),
                 updated.getSubtotal(),
                 updated.getItemStatus()
@@ -297,6 +299,7 @@ public class OrderController {
                             d.getUnitPrice(),
                             d.getFlavorName(),
                             d.getStation(),
+                            d.getProduct() != null ? d.getProduct().getStation() : null,
                             d.getNotes(),
                             d.getSubtotal(),
                             d.getItemStatus()

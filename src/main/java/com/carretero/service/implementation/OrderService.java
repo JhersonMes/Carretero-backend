@@ -141,6 +141,10 @@ public class OrderService extends GenericService<Order, Integer> implements IOrd
         Order order = repo.findById(idOrder)
                 .orElseThrow(() -> new ModelNotFoundException("Pedido no encontrado: " + idOrder));
 
+        if (order.getStatus() == OrderStatus.PAGADO || order.getStatus() == OrderStatus.CANCELADO) {
+            throw new IllegalStateException("No se pueden agregar platos a un pedido ya cerrado (" + order.getStatus() + ").");
+        }
+
         for (OrderCreateRequestDTO.OrderItemRequestDTO itemReq : items) {
             Product product = productRepo.findById(itemReq.getIdProduct())
                     .orElseThrow(() -> new ModelNotFoundException("Producto no encontrado: " + itemReq.getIdProduct()));

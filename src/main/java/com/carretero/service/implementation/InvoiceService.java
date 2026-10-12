@@ -43,6 +43,10 @@ public class InvoiceService extends GenericService<Invoice, Integer> implements 
         Order order = orderRepo.findById(request.getIdOrder())
                 .orElseThrow(() -> new ModelNotFoundException("Pedido no encontrado: " + request.getIdOrder()));
 
+        if (order.getStatus() != OrderStatus.PAGADO) {
+            throw new IllegalStateException("Solo se puede emitir comprobante para un pedido pagado.");
+        }
+
         List<Invoice> vigentes = repo.findByOrderIdOrderAndSunatStatusNot(order.getIdOrder(), SunatStatus.ANULADO);
         if (!vigentes.isEmpty()) {
             throw new IllegalStateException("El pedido ya cuenta con un comprobante emitido: " + vigentes.get(0).getFullNumber());

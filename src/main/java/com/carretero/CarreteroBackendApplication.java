@@ -9,4 +9,4 @@ public class CarreteroBackendApplication {
     public static void main(String[] args) {
         SpringApplication.run(CarreteroBackendApplication.class, args);
     }
-}
+}   
