@@ -92,7 +92,7 @@ public class ProductController {
         }
 
         String username = SecurityContextHolder.getContext().getAuthentication().getName();
-        User currentUser = userRepo.findOneByUsername(username);
+        User currentUser = userRepo.findOneByUsernameOrEmail(username, username);
 
         Product obj = service.updatePrice(id, newPrice, currentUser);
         return ResponseEntity.ok(modelMapper.map(obj, ProductDTO.class));

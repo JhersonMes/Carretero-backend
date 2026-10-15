@@ -26,7 +26,7 @@ public class ProductDTO {
     private String description;
 
     @NotNull(message = "El precio es obligatorio")
-    @DecimalMin(value = "0.0", inclusive = false, message = "El precio debe ser mayor a 0")
+    @DecimalMin(value = "0.0", message = "El precio no puede ser negativo")
     private BigDecimal price;
 
     @NotNull(message = "La categoría es obligatoria")
