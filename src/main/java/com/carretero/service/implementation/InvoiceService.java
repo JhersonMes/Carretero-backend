@@ -63,6 +63,13 @@ public class InvoiceService extends GenericService<Invoice, Integer> implements 
             }
         } else if (request.getInvoiceType() == InvoiceType.BOLETA) {
             series = config.getBoletaSeries() != null ? config.getBoletaSeries() : "B001";
+            // RN-30: una boleta mayor a S/ 700 debe identificar al comprador, en todos los
+            // canales (antes solo lo exigia la pantalla de Delivery).
+            if (order.getTotal() != null && order.getTotal().compareTo(BOLETA_DNI_THRESHOLD) > 0
+                    && !buyerIdentified(request)) {
+                throw new IllegalStateException(
+                        "Una boleta mayor a S/ 700.00 debe identificar al comprador: ingresa su DNI.");
+            }
         } else {
             series = config.getNotaVentaSeries() != null ? config.getNotaVentaSeries() : "NV01";
         }
@@ -171,5 +178,16 @@ public class InvoiceService extends GenericService<Invoice, Integer> implements 
         Integer max = repo.findMaxCorrelativeBySeries(series);
         int next = (max != null) ? max + 1 : 1;
         return String.format("%s-%08d", series, next);
+    }
+
+    /** Importe desde el cual la boleta exige el DNI del comprador (RN-30). */
+    public static final BigDecimal BOLETA_DNI_THRESHOLD = new BigDecimal("700.00");
+
+    private boolean buyerIdentified(InvoiceEmitRequestDTO request) {
+        if (request.getDocNumber() != null && !request.getDocNumber().trim().isEmpty()) return true;
+        if (request.getIdClient() == null) return false;
+        return clientRepo.findById(request.getIdClient())
+                .map(c -> c.getDocNumber() != null && !c.getDocNumber().trim().isEmpty())
+                .orElse(false);
     }
 }

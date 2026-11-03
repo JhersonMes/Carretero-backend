@@ -78,7 +78,7 @@ public class WebSecurityConfig {
                                 "/*.json")
                         .permitAll()
 
-                        .requestMatchers("/login", "/register").permitAll()
+                        .requestMatchers("/login", "/register", "/auth/forgot-password", "/auth/reset-password").permitAll()
 
                         .requestMatchers("/ws/**").permitAll()
 

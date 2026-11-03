@@ -29,6 +29,9 @@ public class JwtUserDetailsService implements UserDetailsService {
         if (user.getRole() != null) {
             authorities.add(new SimpleGrantedAuthority(user.getRole().getName()));
         }
-        return new org.springframework.security.core.userdetails.User(user.getUsername(), user.getPassword(), authorities);
+        // enabled = false es la baja logica (RN-04): Spring Security la rechaza con
+        // DisabledException y el login responde las mismas credenciales invalidas.
+        return new org.springframework.security.core.userdetails.User(
+                user.getUsername(), user.getPassword(), user.isEnabled(), true, true, true, authorities);
     }
 }

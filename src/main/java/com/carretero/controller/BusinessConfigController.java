@@ -53,6 +53,7 @@ public class BusinessConfigController {
     }
 
     @PutMapping
+    @PreAuthorize("hasAuthority('ADMIN')") // datos del negocio, SUNAT e impresoras: solo el administrador
     public ResponseEntity<BusinessConfigDTO> updateConfig(@Valid @RequestBody BusinessConfigDTO dto) throws Exception {
         BusinessConfig config = modelMapper.map(dto, BusinessConfig.class);
         BusinessConfig updated = service.updateConfig(config);

@@ -467,7 +467,8 @@ public class OrderServiceTest {
         dCocina.setStation(KitchenStation.COCINA);
         dCocina.setItemStatus(OrderItemStatus.EN_PREPARACION);
 
-        when(orderDetailRepo.findPendingByStation(anyList(), eq(KitchenStation.COCINA), anyList()))
+        when(orderDetailRepo.findPendingByStation(anyList(), eq(KitchenStation.COCINA),
+                eq(OrderStatus.CANCELADO), eq(OrderStatus.PAGADO), eq(OrderType.SALON)))
                 .thenReturn(List.of(dCocina));
 
         // ejecucion

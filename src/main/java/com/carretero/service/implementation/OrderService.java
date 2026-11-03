@@ -404,7 +404,9 @@ public class OrderService extends GenericService<Order, Integer> implements IOrd
         return orderDetailRepo.findPendingByStation(
                 List.of(OrderItemStatus.PENDIENTE, OrderItemStatus.EN_PREPARACION),
                 station,
-                List.of(OrderStatus.PAGADO, OrderStatus.CANCELADO)
+                OrderStatus.CANCELADO,
+                OrderStatus.PAGADO,
+                OrderType.SALON
         );
     }
 

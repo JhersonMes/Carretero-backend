@@ -69,6 +69,15 @@ public class LoginController {
             user.setRole(defaultRole);
         }
 
+        // Usuario o correo repetidos: mensaje claro en vez del error crudo de la base (CP-02-3-1).
+        if (userRepository.findOneByUsername(user.getUsername()) != null) {
+            throw new IllegalStateException("Ya existe un usuario llamado \"" + user.getUsername() + "\".");
+        }
+        if (user.getEmail() != null && userRepository.findOneByEmail(user.getEmail()) != null) {
+            throw new IllegalStateException("El correo " + user.getEmail() + " ya esta registrado.");
+        }
+        userService.validateNewPassword(userDTO.getPassword());
+
         user.setEnabled(true);
         User savedUser = userService.save(user);
         return ResponseEntity.status(HttpStatus.CREATED).body(modelMapper.map(savedUser, UserDTO.class));

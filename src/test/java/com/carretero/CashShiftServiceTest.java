@@ -278,4 +278,60 @@ public class CashShiftServiceTest {
         assertEquals("No se pueden registrar movimientos en un turno de caja cerrado.", ex.getMessage());
         verify(movementRepo, never()).save(any(CashMovement.class));
     }
+
+    // CASO DE PRUEBA CP-05-3-1: un egreso con monto 0 o sin motivo no se registra
+    @Test
+    void registerMovement_montoCeroOSinMotivo_seRechaza() {
+        // preparacion
+        CashShift open = new CashShift();
+        open.setIdCashShift(4);
+        open.setStatus(CashShiftStatus.ABIERTA);
+        when(shiftRepo.findById(4)).thenReturn(Optional.of(open));
+
+        CashMovementDTO cero = new CashMovementDTO();
+        cero.setIdCashShift(4);
+        cero.setType(CashMovementType.EGRESO);
+        cero.setAmount(BigDecimal.ZERO);
+        cero.setReason("Compra de hielo");
+
+        CashMovementDTO sinMotivo = new CashMovementDTO();
+        sinMotivo.setIdCashShift(4);
+        sinMotivo.setType(CashMovementType.EGRESO);
+        sinMotivo.setAmount(new BigDecimal("30.00"));
+        sinMotivo.setReason("  ");
+
+        // ejecucion y afirmacion
+        assertEquals("El monto del movimiento debe ser mayor a 0.",
+                assertThrows(IllegalStateException.class, () -> cashShiftService.registerMovement(cero, mockUser)).getMessage());
+        assertEquals("Escribe el motivo del movimiento.",
+                assertThrows(IllegalStateException.class, () -> cashShiftService.registerMovement(sinMotivo, mockUser)).getMessage());
+        verify(movementRepo, never()).save(any(CashMovement.class));
+    }
+
+    // CASO DE PRUEBA CP-05-3-1: egreso de S/ 30 para comprar hielo baja el esperado de 100 a 70
+    @Test
+    void registerMovement_egresoHielo_bajaElEsperadoA70() throws Exception {
+        // preparacion
+        CashShift open = new CashShift();
+        open.setIdCashShift(5);
+        open.setStatus(CashShiftStatus.ABIERTA);
+        open.setInitialAmount(new BigDecimal("100.00"));
+        open.setCashSales(BigDecimal.ZERO);
+        open.setCashIn(BigDecimal.ZERO);
+        open.setCashOut(BigDecimal.ZERO);
+        when(shiftRepo.findById(5)).thenReturn(Optional.of(open));
+
+        CashMovementDTO dto = new CashMovementDTO();
+        dto.setIdCashShift(5);
+        dto.setType(CashMovementType.EGRESO);
+        dto.setAmount(new BigDecimal("30.00"));
+        dto.setReason("Compra de hielo");
+
+        // ejecucion
+        cashShiftService.registerMovement(dto, mockUser);
+
+        // afirmacion
+        assertEquals(new BigDecimal("70.00"), open.getExpectedCash());
+        verify(movementRepo).save(any(CashMovement.class));
+    }
 }

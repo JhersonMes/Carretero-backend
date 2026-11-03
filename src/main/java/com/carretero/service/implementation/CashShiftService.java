@@ -134,6 +134,16 @@ public class CashShiftService extends GenericService<CashShift, Integer> impleme
             throw new IllegalStateException("No se pueden registrar movimientos en un turno de caja cerrado.");
         }
 
+        if (dto.getType() == null) {
+            throw new IllegalStateException("Elige si el movimiento es un ingreso o un egreso.");
+        }
+        if (dto.getAmount() == null || dto.getAmount().compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalStateException("El monto del movimiento debe ser mayor a 0.");
+        }
+        if (dto.getReason() == null || dto.getReason().trim().isEmpty()) {
+            throw new IllegalStateException("Escribe el motivo del movimiento.");
+        }
+
         CashMovement movement = new CashMovement();
         movement.setCashShift(shift);
         movement.setUser(user);

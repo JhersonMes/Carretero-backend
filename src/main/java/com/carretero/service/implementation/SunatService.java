@@ -46,7 +46,9 @@ public class SunatService implements ISunatService {
      * son LAZY: fuera de una sesion abierta esa lectura falla.
      */
     @Override
-    @Transactional(readOnly = true)
+    // No es solo lectura: cuando la API externa responde, el cliente se guarda en el
+    // padron para la proxima vez. Con readOnly el guardado no se escribia (CP-13-2-1).
+    @Transactional
     public DniRucQueryResponseDTO queryDocument(String docNumber) {
         if (docNumber == null || docNumber.trim().isEmpty()) {
             return new DniRucQueryResponseDTO(false, null, docNumber, null, null, null, "Número de documento vacío", false);

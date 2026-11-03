@@ -17,25 +17,25 @@ public class PrinterController {
     @PostMapping("/order/{idOrder}/kitchen")
     public ResponseEntity<Map<String, Object>> printKitchen(@PathVariable("idOrder") Integer idOrder) {
         boolean success = printerService.printKitchenComanda(idOrder);
-        return ResponseEntity.ok(Map.of("success", success, "message", success ? "Comanda enviada a cocina" : "No se pudo conectar con la ticketera de cocina"));
+        return ResponseEntity.ok(Map.of("success", success, "message", success ? "Comanda enviada a cocina" : "No se pudo imprimir: la ticketera de cocina no esta activa o no responde. Revisa la configuracion en Impresoras."));
     }
 
     @PostMapping("/order/{idOrder}/bar")
     public ResponseEntity<Map<String, Object>> printBar(@PathVariable("idOrder") Integer idOrder) {
         boolean success = printerService.printBarComanda(idOrder);
-        return ResponseEntity.ok(Map.of("success", success, "message", success ? "Comanda enviada a barra" : "No se pudo conectar con la ticketera de barra"));
+        return ResponseEntity.ok(Map.of("success", success, "message", success ? "Comanda enviada a barra" : "No se pudo imprimir: la ticketera de barra no esta activa o no responde. Revisa la configuracion en Impresoras."));
     }
 
     @PostMapping("/order/{idOrder}/pre-account")
     public ResponseEntity<Map<String, Object>> printPreAccount(@PathVariable("idOrder") Integer idOrder) {
         boolean success = printerService.printPreAccount(idOrder);
-        return ResponseEntity.ok(Map.of("success", success, "message", success ? "Pre-cuenta enviada a caja" : "No se pudo conectar con la ticketera de caja"));
+        return ResponseEntity.ok(Map.of("success", success, "message", success ? "Pre-cuenta enviada a caja" : "No se pudo imprimir: la ticketera de caja no esta activa o no responde. Revisa la configuracion en Impresoras."));
     }
 
     @PostMapping("/invoice/{idInvoice}")
     public ResponseEntity<Map<String, Object>> printInvoice(@PathVariable("idInvoice") Integer idInvoice) {
         boolean success = printerService.printInvoice(idInvoice);
-        return ResponseEntity.ok(Map.of("success", success, "message", success ? "Comprobante impreso en caja" : "No se pudo conectar con la ticketera de caja"));
+        return ResponseEntity.ok(Map.of("success", success, "message", success ? "Comprobante impreso en caja" : "No se pudo imprimir: la ticketera de caja no esta activa o no responde. Revisa la configuracion en Impresoras."));
     }
 
     @PostMapping("/test")

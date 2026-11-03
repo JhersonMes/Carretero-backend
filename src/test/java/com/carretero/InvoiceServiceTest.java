@@ -247,4 +247,57 @@ public class InvoiceServiceTest {
         assertTrue(ex.getMessage().contains("pedido pagado"));
         verify(invoiceRepo, never()).save(any(Invoice.class));
     }
+
+    // CASO DE PRUEBA CP-11-2-3 (RN-30): una boleta mayor a S/ 700 sin DNI se rechaza en Salon
+    @Test
+    void emitInvoice_boletaMayorA700SinDni_seRechaza() {
+        // preparacion
+        Order p735 = new Order();
+        p735.setIdOrder(9);
+        p735.setTotal(new BigDecimal("735.00"));
+        p735.setStatus(OrderStatus.PAGADO);
+        when(orderRepo.findById(9)).thenReturn(Optional.of(p735));
+        when(invoiceRepo.findByOrderIdOrderAndSunatStatusNot(9, SunatStatus.ANULADO)).thenReturn(Collections.emptyList());
+        when(configRepo.findFirstByActiveTrue()).thenReturn(Optional.of(mockConfig));
+
+        InvoiceEmitRequestDTO request = new InvoiceEmitRequestDTO();
+        request.setIdOrder(9);
+        request.setInvoiceType(InvoiceType.BOLETA);
+
+        // ejecucion y afirmacion
+        IllegalStateException ex = assertThrows(IllegalStateException.class,
+                () -> invoiceService.emitInvoice(request, mockUser));
+        assertTrue(ex.getMessage().contains("mayor a S/ 700.00"));
+        verify(invoiceRepo, never()).save(any(Invoice.class));
+    }
+
+    // CASO DE PRUEBA CP-11-2-3 (RN-30): con el DNI del comprador la boleta de S/ 735 si se emite
+    @Test
+    void emitInvoice_boletaMayorA700ConDni_seEmite() throws Exception {
+        // preparacion
+        Order p735 = new Order();
+        p735.setIdOrder(9);
+        p735.setTotal(new BigDecimal("735.00"));
+        p735.setStatus(OrderStatus.PAGADO);
+        when(orderRepo.findById(9)).thenReturn(Optional.of(p735));
+        when(invoiceRepo.findByOrderIdOrderAndSunatStatusNot(9, SunatStatus.ANULADO)).thenReturn(Collections.emptyList());
+        when(configRepo.findFirstByActiveTrue()).thenReturn(Optional.of(mockConfig));
+        when(invoiceRepo.findMaxCorrelativeBySeries("B001")).thenReturn(30);
+        when(clientRepo.findAllByDocNumber("74658932")).thenReturn(Collections.emptyList());
+        when(clientRepo.save(any(Client.class))).thenAnswer(i -> i.getArgument(0));
+        when(sunatService.dispatchToSunat(any(Invoice.class))).thenAnswer(i -> i.getArgument(0));
+        when(invoiceRepo.save(any(Invoice.class))).thenAnswer(i -> i.getArgument(0));
+
+        InvoiceEmitRequestDTO request = new InvoiceEmitRequestDTO();
+        request.setIdOrder(9);
+        request.setInvoiceType(InvoiceType.BOLETA);
+        request.setDocNumber("74658932");
+
+        // ejecucion
+        Invoice emitted = invoiceService.emitInvoice(request, mockUser);
+
+        // afirmacion
+        assertEquals("B001-00000031", emitted.getFullNumber());
+        assertEquals("74658932", emitted.getClient().getDocNumber());
+    }
 }

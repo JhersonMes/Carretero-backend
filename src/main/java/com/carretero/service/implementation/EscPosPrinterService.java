@@ -9,6 +9,7 @@ import com.carretero.service.IEscPosPrinterService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.io.ByteArrayOutputStream;
 import java.io.OutputStream;
@@ -22,6 +23,9 @@ import java.util.Optional;
 @Slf4j
 @Service
 @RequiredArgsConstructor
+// Los detalles del pedido y del comprobante son LAZY: sin una sesion abierta, armar el
+// ticket fallaba con "failed to lazily initialize" (defectos CP-12-1-1 y CP-12-2-1).
+@Transactional(readOnly = true)
 public class EscPosPrinterService implements IEscPosPrinterService {
 
     private final IOrderRepository orderRepo;
@@ -46,10 +50,10 @@ public class EscPosPrinterService implements IEscPosPrinterService {
         Order order = orderOpt.get();
 
         List<OrderDetail> kitchenItems = order.getDetails().stream()
-                .filter(d -> d.getProduct() != null &&
-                        (d.getProduct().getCategory() == null ||
-                         d.getProduct().getCategory().getStation() == KitchenStation.COCINA ||
-                         d.getProduct().getCategory().getStation() == KitchenStation.PARRILLA))
+                .filter(d -> {
+                    KitchenStation st = stationOf(d);
+                    return st == null || st == KitchenStation.COCINA || st == KitchenStation.PARRILLA;
+                })
                 .toList();
 
         if (kitchenItems.isEmpty()) return true;
@@ -57,7 +61,7 @@ public class EscPosPrinterService implements IEscPosPrinterService {
         BusinessConfig config = configRepo.findFirstByActiveTrue().orElseGet(BusinessConfig::new);
         if (!config.isKitchenPrinterEnabled()) {
             log.info("Impresora de cocina deshabilitada en la configuración.");
-            return true;
+            return false; // no se imprimio nada: la pantalla debe avisarlo
         }
 
         try {
@@ -81,6 +85,9 @@ public class EscPosPrinterService implements IEscPosPrinterService {
                 buffer.write(TEXT_BOLD_ON);
                 buffer.write(String.format("[ %d ] %s\n", d.getQuantity(), d.getProductName()).getBytes(StandardCharsets.UTF_8));
                 buffer.write(TEXT_BOLD_OFF);
+                if (d.getFlavorName() != null && !d.getFlavorName().isBlank()) {
+                    buffer.write(("   Opcion: " + d.getFlavorName() + "\n").getBytes(StandardCharsets.UTF_8));
+                }
                 if (d.getNotes() != null && !d.getNotes().trim().isEmpty()) {
                     buffer.write(("   >> NOTA: " + d.getNotes() + "\n").getBytes(StandardCharsets.UTF_8));
                 }
@@ -109,10 +116,7 @@ public class EscPosPrinterService implements IEscPosPrinterService {
         Order order = orderOpt.get();
 
         List<OrderDetail> barItems = order.getDetails().stream()
-                .filter(d -> d.getProduct() != null &&
-                        d.getProduct().getCategory() != null &&
-                        (d.getProduct().getCategory().getStation() == KitchenStation.BEBIDAS ||
-                         d.getProduct().getCategory().getStation() == KitchenStation.BARRA))
+                .filter(d -> stationOf(d) == KitchenStation.BEBIDAS || stationOf(d) == KitchenStation.BARRA)
                 .toList();
 
         if (barItems.isEmpty()) return true;
@@ -120,7 +124,7 @@ public class EscPosPrinterService implements IEscPosPrinterService {
         BusinessConfig config = configRepo.findFirstByActiveTrue().orElseGet(BusinessConfig::new);
         if (!config.isBarPrinterEnabled()) {
             log.info("Impresora de bar/bebidas deshabilitada en la configuración.");
-            return true;
+            return false; // no se imprimio nada: la pantalla debe avisarlo
         }
 
         try {
@@ -143,6 +147,9 @@ public class EscPosPrinterService implements IEscPosPrinterService {
                 buffer.write(TEXT_BOLD_ON);
                 buffer.write(String.format("[ %d ] %s\n", d.getQuantity(), d.getProductName()).getBytes(StandardCharsets.UTF_8));
                 buffer.write(TEXT_BOLD_OFF);
+                if (d.getFlavorName() != null && !d.getFlavorName().isBlank()) {
+                    buffer.write(("   Opcion: " + d.getFlavorName() + "\n").getBytes(StandardCharsets.UTF_8));
+                }
             }
 
             buffer.write(LINE_FEED);
@@ -163,7 +170,7 @@ public class EscPosPrinterService implements IEscPosPrinterService {
         Order order = orderOpt.get();
 
         BusinessConfig config = configRepo.findFirstByActiveTrue().orElseGet(BusinessConfig::new);
-        if (!config.isCashierPrinterEnabled()) return true;
+        if (!config.isCashierPrinterEnabled()) return false; // ticketera de caja desactivada: no se imprimio
 
         try {
             ByteArrayOutputStream buffer = new ByteArrayOutputStream();
@@ -220,7 +227,7 @@ public class EscPosPrinterService implements IEscPosPrinterService {
         Invoice invoice = invOpt.get();
 
         BusinessConfig config = configRepo.findFirstByActiveTrue().orElseGet(BusinessConfig::new);
-        if (!config.isCashierPrinterEnabled()) return true;
+        if (!config.isCashierPrinterEnabled()) return false; // ticketera de caja desactivada: no se imprimio
 
         try {
             ByteArrayOutputStream buffer = new ByteArrayOutputStream();
@@ -295,6 +302,15 @@ public class EscPosPrinterService implements IEscPosPrinterService {
             log.warn("Ticketera en {}:{} no alcanzable: {}", ip, port, e.getMessage());
             return false;
         }
+    }
+
+    /** Estacion de la linea (RN-19): primero la del item, luego la del producto y la de su categoria. */
+    private KitchenStation stationOf(OrderDetail d) {
+        if (d.getStation() != null) return d.getStation();
+        Product p = d.getProduct();
+        if (p == null) return null;
+        if (p.getStation() != null) return p.getStation();
+        return p.getCategory() != null ? p.getCategory().getStation() : null;
     }
 
     private boolean sendToPrinter(String ip, Integer port, byte[] data) {

@@ -106,10 +106,11 @@ public class DiningTableService extends GenericService<DiningTable, Integer> imp
     @Transactional
     public DiningTable activate(Integer idTable) throws Exception {
         DiningTable table = find(idTable);
+        // La pantalla promete "reactivada al final del plano": se le da la ultima
+        // posicion en vez de devolverla a la que tenia antes de la baja (CP-17-3-2).
+        int last = nextOrderIndex();
         table.setActive(true);
-        if (table.getOrderIndex() == null) {
-            table.setOrderIndex(nextOrderIndex());
-        }
+        table.setOrderIndex(last);
         return repo.save(table);
     }
 

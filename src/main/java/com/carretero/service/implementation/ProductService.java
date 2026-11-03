@@ -98,6 +98,6 @@ public class ProductService extends GenericService<Product, Integer> implements 
 
     @Override
     public List<PriceHistory> getPriceHistories(Integer idProduct) {
-        return priceHistoryRepo.findByProductIdProductOrderByChangedAtDesc(idProduct);
+        return priceHistoryRepo.findHistoryWithDetails(idProduct);
     }
 }
