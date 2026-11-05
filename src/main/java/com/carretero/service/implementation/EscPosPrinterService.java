@@ -13,6 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.io.ByteArrayOutputStream;
 import java.io.OutputStream;
+import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
@@ -294,14 +295,25 @@ public class EscPosPrinterService implements IEscPosPrinterService {
 
     @Override
     public boolean testPrinterConnection(String ip, int port) {
-        if (ip == null || ip.trim().isEmpty() || port <= 0) return false;
+        if (ip == null || ip.trim().isEmpty() || !isPrinterPort(port)) return false;
         try (Socket socket = new Socket()) {
-            socket.connect(new InetSocketAddress(ip.trim(), port), 1500); // 1.5s timeout
+            // Solo ticketeras de la red local: evita usar la prueba para sondear el servidor u otras redes
+            InetAddress address = InetAddress.getByName(ip.trim());
+            if (!address.isSiteLocalAddress()) {
+                log.warn("Prueba de ticketera rechazada: {} no es una IP de red local", ip);
+                return false;
+            }
+            socket.connect(new InetSocketAddress(address, port), 1500); // 1.5s timeout
             return socket.isConnected();
         } catch (Exception e) {
             log.warn("Ticketera en {}:{} no alcanzable: {}", ip, port, e.getMessage());
             return false;
         }
+    }
+
+    /** Puertos de impresion directa (RAW / JetDirect): 9100 a 9109. */
+    private static boolean isPrinterPort(int port) {
+        return port >= 9100 && port <= 9109;
     }
 
     /** Estacion de la linea (RN-19): primero la del item, luego la del producto y la de su categoria. */

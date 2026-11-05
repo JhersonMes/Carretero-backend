@@ -3,6 +3,7 @@ package com.carretero.controller;
 import com.carretero.service.IEscPosPrinterService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
@@ -38,6 +39,8 @@ public class PrinterController {
         return ResponseEntity.ok(Map.of("success", success, "message", success ? "Comprobante impreso en caja" : "No se pudo imprimir: la ticketera de caja no esta activa o no responde. Revisa la configuracion en Impresoras."));
     }
 
+    // Abre un socket hacia la IP que llega en el cuerpo: solo el administrador (pantalla Impresoras)
+    @PreAuthorize("hasAuthority('ADMIN')")
     @PostMapping("/test")
     public ResponseEntity<Map<String, Object>> testPrinter(@RequestBody Map<String, Object> body) {
         String ip = (String) body.get("ip");
