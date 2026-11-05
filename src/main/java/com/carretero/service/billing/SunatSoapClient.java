@@ -16,6 +16,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.Arrays;
 import java.util.Base64;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
@@ -47,6 +48,21 @@ public class SunatSoapClient {
 
         /** SUNAT respondio con la constancia. */
         record Cdr(byte[] content) implements SoapResult {
+            // Un record compara los arrays por referencia: se compara el contenido.
+            @Override
+            public boolean equals(Object o) {
+                return o instanceof Cdr other && Arrays.equals(content, other.content);
+            }
+
+            @Override
+            public int hashCode() {
+                return Arrays.hashCode(content);
+            }
+
+            @Override
+            public String toString() {
+                return "Cdr[" + (content == null ? 0 : content.length) + " bytes]";
+            }
         }
 
         /** SUNAT contesto, y rechazo el comprobante. */
