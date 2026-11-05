@@ -63,7 +63,7 @@ public class PasswordResetService implements IPasswordResetService {
         entity.setExpiresAt(LocalDateTime.now().plusMinutes(TOKEN_MINUTES));
         tokenRepo.save(entity);
 
-        String link = frontendUrl.replaceAll("/+$", "") + "/reset-password?token=" + token;
+        String link = withoutTrailingSlashes(frontendUrl) + "/reset-password?token=" + token;
         String name = user.getFullName() != null ? user.getFullName() : user.getUsername();
         String body = "Hola " + name + ":\n\n"
                 + "Recibimos un pedido para crear una nueva contrasena de tu cuenta \"" + user.getUsername()
@@ -101,6 +101,13 @@ public class PasswordResetService implements IPasswordResetService {
 
         entity.setUsedAt(LocalDateTime.now());
         tokenRepo.save(entity);
+    }
+
+    /** Quita las "/" del final sin regex (replaceAll("/+$") hace backtracking). */
+    static String withoutTrailingSlashes(String url) {
+        int end = url.length();
+        while (end > 0 && url.charAt(end - 1) == '/') end--;
+        return url.substring(0, end);
     }
 
     static String sha256(String value) {
