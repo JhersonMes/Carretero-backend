@@ -182,7 +182,7 @@ public class SalonBoardService implements ISalonBoardService {
     }
 
     @Override
-    @Transactional
+    @Transactional(rollbackFor = Exception.class)
     public void reorderTables(List<Integer> orderedTableIds) throws Exception {
         if (orderedTableIds == null || orderedTableIds.isEmpty()) {
             throw new IllegalStateException("Debe enviar al menos una mesa para reordenar el salon.");

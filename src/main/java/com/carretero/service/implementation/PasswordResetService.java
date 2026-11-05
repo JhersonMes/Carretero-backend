@@ -80,7 +80,7 @@ public class PasswordResetService implements IPasswordResetService {
     }
 
     @Override
-    @Transactional
+    @Transactional(rollbackFor = Exception.class)
     public void resetPassword(String token, String newPassword) throws Exception {
         if (token == null || token.isBlank()) {
             throw new IllegalStateException("El enlace no es valido.");

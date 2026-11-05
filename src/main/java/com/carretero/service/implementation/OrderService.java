@@ -48,7 +48,7 @@ public class OrderService extends GenericService<Order, Integer> implements IOrd
     }
 
     @Override
-    @Transactional
+    @Transactional(rollbackFor = Exception.class)
     public Order createOrder(OrderCreateRequestDTO request, User user) throws Exception {
         if (cashShiftService.getActiveShift().isEmpty()) {
             throw new IllegalStateException("No hay una caja aperturada. Debes aperturar caja antes de enviar pedidos.");
@@ -136,7 +136,7 @@ public class OrderService extends GenericService<Order, Integer> implements IOrd
     }
 
     @Override
-    @Transactional
+    @Transactional(rollbackFor = Exception.class)
     public Order addItemsToOrder(Integer idOrder, List<OrderCreateRequestDTO.OrderItemRequestDTO> items, User user) throws Exception {
         Order order = repo.findById(idOrder)
                 .orElseThrow(() -> new ModelNotFoundException("Pedido no encontrado: " + idOrder));
@@ -188,7 +188,7 @@ public class OrderService extends GenericService<Order, Integer> implements IOrd
      * deshacer una venta cobrada, y comprobarlo en la pantalla no protege nada.
      */
     @Override
-    @Transactional
+    @Transactional(rollbackFor = Exception.class)
     public Order cancelOrder(Integer idOrder, String pin, String reason, User user) throws Exception {
         if (!businessConfigService.matchesAdminPin(pin)) {
             throw new IllegalArgumentException("El PIN de autorizacion no es correcto.");
@@ -258,7 +258,7 @@ public class OrderService extends GenericService<Order, Integer> implements IOrd
      * haberse cocinado ya; agregar, en cambio, no lo pide.
      */
     @Override
-    @Transactional
+    @Transactional(rollbackFor = Exception.class)
     public Order removeItem(Integer idOrderDetail, String pin, User user) throws Exception {
         if (!businessConfigService.matchesAdminPin(pin)) {
             throw new IllegalArgumentException("El PIN de autorizacion no es correcto.");
@@ -294,7 +294,7 @@ public class OrderService extends GenericService<Order, Integer> implements IOrd
      * justamente lo que hay que corregir a ultimo momento.
      */
     @Override
-    @Transactional
+    @Transactional(rollbackFor = Exception.class)
     public OrderDetail updateItemNotes(Integer idOrderDetail, String notes) throws Exception {
         OrderDetail detail = orderDetailRepo.findById(idOrderDetail)
                 .orElseThrow(() -> new ModelNotFoundException("Item de pedido no encontrado: " + idOrderDetail));
@@ -309,7 +309,7 @@ public class OrderService extends GenericService<Order, Integer> implements IOrd
     }
 
     @Override
-    @Transactional
+    @Transactional(rollbackFor = Exception.class)
     public Order updateOrderStatus(Integer idOrder, OrderStatus status) throws Exception {
         Order order = repo.findById(idOrder)
                 .orElseThrow(() -> new ModelNotFoundException("Pedido no encontrado: " + idOrder));
@@ -333,7 +333,7 @@ public class OrderService extends GenericService<Order, Integer> implements IOrd
     }
 
     @Override
-    @Transactional
+    @Transactional(rollbackFor = Exception.class)
     public OrderDetail updateItemStatus(Integer idOrderDetail, OrderItemStatus status) throws Exception {
         OrderDetail detail = orderDetailRepo.findById(idOrderDetail)
                 .orElseThrow(() -> new ModelNotFoundException("Item de pedido no encontrado: " + idOrderDetail));

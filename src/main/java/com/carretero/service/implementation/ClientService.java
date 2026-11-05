@@ -24,7 +24,7 @@ public class ClientService extends GenericService<Client, Integer> implements IC
     }
 
     @Override
-    @Transactional
+    @Transactional(rollbackFor = Exception.class)
     public Client save(Client client) throws Exception {
         ensureDocNumberIsFree(client.getDocNumber(), null);
         return repo.save(client);
@@ -39,7 +39,7 @@ public class ClientService extends GenericService<Client, Integer> implements IC
      * administran por su propio endpoint.
      */
     @Override
-    @Transactional
+    @Transactional(rollbackFor = Exception.class)
     public Client update(Client client, Integer id) throws Exception {
         Client existing = repo.findById(id)
                 .orElseThrow(() -> new ModelNotFoundException("Cliente no encontrado: " + id));

@@ -39,7 +39,7 @@ public class PaymentService extends GenericService<Payment, Integer> implements 
     }
 
     @Override
-    @Transactional
+    @Transactional(rollbackFor = Exception.class)
     public List<Payment> registerPayments(PaymentCreateRequestDTO request, User user) throws Exception {
         Order order = orderRepo.findById(request.getIdOrder())
                 .orElseThrow(() -> new ModelNotFoundException("Pedido no encontrado: " + request.getIdOrder()));

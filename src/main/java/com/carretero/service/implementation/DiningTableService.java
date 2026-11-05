@@ -48,7 +48,7 @@ public class DiningTableService extends GenericService<DiningTable, Integer> imp
     }
 
     @Override
-    @Transactional
+    @Transactional(rollbackFor = Exception.class)
     public DiningTable updateStatus(Integer idTable, TableStatus status) throws Exception {
         DiningTable table = find(idTable);
         table.setStatus(status);
@@ -56,7 +56,7 @@ public class DiningTableService extends GenericService<DiningTable, Integer> imp
     }
 
     @Override
-    @Transactional
+    @Transactional(rollbackFor = Exception.class)
     public DiningTable createTable(String name, Integer capacity) throws Exception {
         String cleanName = requireName(name, null);
 
@@ -73,7 +73,7 @@ public class DiningTableService extends GenericService<DiningTable, Integer> imp
     }
 
     @Override
-    @Transactional
+    @Transactional(rollbackFor = Exception.class)
     public DiningTable renameTable(Integer idTable, String name, Integer capacity) throws Exception {
         DiningTable table = find(idTable);
 
@@ -86,7 +86,7 @@ public class DiningTableService extends GenericService<DiningTable, Integer> imp
     }
 
     @Override
-    @Transactional
+    @Transactional(rollbackFor = Exception.class)
     public DiningTable deactivate(Integer idTable) throws Exception {
         DiningTable table = find(idTable);
 
@@ -103,7 +103,7 @@ public class DiningTableService extends GenericService<DiningTable, Integer> imp
     }
 
     @Override
-    @Transactional
+    @Transactional(rollbackFor = Exception.class)
     public DiningTable activate(Integer idTable) throws Exception {
         DiningTable table = find(idTable);
         // La pantalla promete "reactivada al final del plano": se le da la ultima

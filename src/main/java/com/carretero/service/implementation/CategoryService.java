@@ -41,7 +41,7 @@ public class CategoryService extends GenericService<Category, Integer> implement
      * se respetan: solo se mueven los que seguian en el area vieja.
      */
     @Override
-    @Transactional
+    @Transactional(rollbackFor = Exception.class)
     public Category changeStation(Integer idCategory, KitchenStation station, boolean moveProducts) throws Exception {
         Category category = repo.findById(idCategory)
                 .orElseThrow(() -> new ModelNotFoundException("Categoria no encontrada: " + idCategory));

@@ -38,7 +38,7 @@ public class InvoiceService extends GenericService<Invoice, Integer> implements 
     }
 
     @Override
-    @Transactional
+    @Transactional(rollbackFor = Exception.class)
     public Invoice emitInvoice(InvoiceEmitRequestDTO request, User user) throws Exception {
         Order order = orderRepo.findById(request.getIdOrder())
                 .orElseThrow(() -> new ModelNotFoundException("Pedido no encontrado: " + request.getIdOrder()));
@@ -128,7 +128,7 @@ public class InvoiceService extends GenericService<Invoice, Integer> implements 
      * historial se ven los dos: el anulado y el vigente.
      */
     @Override
-    @Transactional
+    @Transactional(rollbackFor = Exception.class)
     public Invoice reissueInvoice(InvoiceEmitRequestDTO request, String pin, User user) throws Exception {
         if (!businessConfigService.matchesAdminPin(pin)) {
             throw new IllegalArgumentException("El PIN de autorizacion no es correcto.");

@@ -28,7 +28,7 @@ public class AddressService extends GenericService<Address, Integer> implements 
     }
 
     @Override
-    @Transactional
+    @Transactional(rollbackFor = Exception.class)
     public Address save(Address address) throws Exception {
         Address saved = repo.save(address);
         clearOtherFavorites(saved);
@@ -43,7 +43,7 @@ public class AddressService extends GenericService<Address, Integer> implements 
      * columna obligatoria. Por eso solo se copian los campos editables.
      */
     @Override
-    @Transactional
+    @Transactional(rollbackFor = Exception.class)
     public Address update(Address address, Integer id) throws Exception {
         Address existing = repo.findById(id)
                 .orElseThrow(() -> new ModelNotFoundException("Direccion no encontrada: " + id));

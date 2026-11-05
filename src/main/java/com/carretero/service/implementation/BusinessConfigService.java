@@ -30,7 +30,7 @@ public class BusinessConfigService extends GenericService<BusinessConfig, Intege
     }
 
     @Override
-    @Transactional
+    @Transactional(rollbackFor = Exception.class)
     public BusinessConfig updateConfig(BusinessConfig config) throws Exception {
         BusinessConfig existing = getConfig();
         config.setIdConfig(existing.getIdConfig());
@@ -66,7 +66,7 @@ public class BusinessConfigService extends GenericService<BusinessConfig, Intege
     }
 
     @Override
-    @Transactional
+    @Transactional(rollbackFor = Exception.class)
     public void changeAdminPin(String newPin) throws Exception {
         // Exactamente 4: es el largo que acepta el teclado de la pantalla, y un
         // PIN mas largo quedaria guardado sin poder teclearse.

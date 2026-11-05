@@ -63,7 +63,7 @@ public class ProductService extends GenericService<Product, Integer> implements 
     }
 
     @Override
-    @Transactional
+    @Transactional(rollbackFor = Exception.class)
     public Product update(Product product, Integer id) throws Exception {
         Product current = repo.findById(id).orElseThrow(() -> new ModelNotFoundException("Producto no encontrado: " + id));
         
@@ -81,7 +81,7 @@ public class ProductService extends GenericService<Product, Integer> implements 
     }
 
     @Override
-    @Transactional
+    @Transactional(rollbackFor = Exception.class)
     public Product updatePrice(Integer idProduct, BigDecimal newPrice, User user) throws Exception {
         Product product = repo.findById(idProduct).orElseThrow(() -> new ModelNotFoundException("Producto no encontrado: " + idProduct));
         

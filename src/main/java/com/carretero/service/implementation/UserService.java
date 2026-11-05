@@ -53,7 +53,7 @@ public class UserService extends GenericService<User, Integer> implements IUserS
     }
 
     @Override
-    @Transactional
+    @Transactional(rollbackFor = Exception.class)
     public User createUser(UserDTO dto) throws Exception {
         String username = clean(dto.getUsername());
         String email = clean(dto.getEmail());
@@ -75,7 +75,7 @@ public class UserService extends GenericService<User, Integer> implements IUserS
     }
 
     @Override
-    @Transactional
+    @Transactional(rollbackFor = Exception.class)
     public User updateUser(Integer id, UserDTO dto) throws Exception {
         User user = repo.findById(id).orElseThrow(() -> new ModelNotFoundException("Usuario no encontrado: " + id));
 
@@ -104,7 +104,7 @@ public class UserService extends GenericService<User, Integer> implements IUserS
     }
 
     @Override
-    @Transactional
+    @Transactional(rollbackFor = Exception.class)
     public User setEnabled(Integer id, boolean enabled, String actorUsername) throws Exception {
         User user = repo.findById(id).orElseThrow(() -> new ModelNotFoundException("Usuario no encontrado: " + id));
         if (!enabled && Objects.equals(user.getUsername(), actorUsername)) {
@@ -115,7 +115,7 @@ public class UserService extends GenericService<User, Integer> implements IUserS
     }
 
     @Override
-    @Transactional
+    @Transactional(rollbackFor = Exception.class)
     public void changeOwnPassword(String username, String currentPassword, String newPassword) throws Exception {
         User user = repo.findOneByUsername(username);
         if (user == null) {

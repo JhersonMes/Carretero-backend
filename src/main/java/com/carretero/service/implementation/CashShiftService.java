@@ -44,7 +44,7 @@ public class CashShiftService extends GenericService<CashShift, Integer> impleme
     }
 
     @Override
-    @Transactional
+    @Transactional(rollbackFor = Exception.class)
     public CashShift openShift(BigDecimal initialAmount, User user, String notes) throws Exception {
         Optional<CashShift> active = repo.findFirstByStatusOrderByOpenTimeDesc(CashShiftStatus.ABIERTA);
         if (active.isPresent()) {
@@ -68,7 +68,7 @@ public class CashShiftService extends GenericService<CashShift, Integer> impleme
     }
 
     @Override
-    @Transactional
+    @Transactional(rollbackFor = Exception.class)
     public CashShift closeShift(Integer idCashShift, BigDecimal actualCash, String notes) throws Exception {
         CashShift shift = repo.findById(idCashShift)
                 .orElseThrow(() -> new ModelNotFoundException("Turno de caja no encontrado: " + idCashShift));
@@ -125,7 +125,7 @@ public class CashShiftService extends GenericService<CashShift, Integer> impleme
     }
 
     @Override
-    @Transactional
+    @Transactional(rollbackFor = Exception.class)
     public CashMovement registerMovement(CashMovementDTO dto, User user) throws Exception {
         CashShift shift = repo.findById(dto.getIdCashShift())
                 .orElseThrow(() -> new ModelNotFoundException("Turno de caja no encontrado: " + dto.getIdCashShift()));
@@ -199,7 +199,7 @@ public class CashShiftService extends GenericService<CashShift, Integer> impleme
     }
 
     @Override
-    @Transactional
+    @Transactional(rollbackFor = Exception.class)
     public CashShift recalculateShiftTotals(Integer idCashShift) throws Exception {
         CashShift shift = repo.findById(idCashShift)
                 .orElseThrow(() -> new ModelNotFoundException("Turno de caja no encontrado: " + idCashShift));
