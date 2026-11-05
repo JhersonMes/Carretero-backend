@@ -2,6 +2,7 @@ package com.carretero.controller;
 
 import com.carretero.dto.CategoryDTO;
 import com.carretero.model.Category;
+import com.carretero.model.enums.KitchenStation;
 import com.carretero.service.ICategoryService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -13,6 +14,7 @@ import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
 import java.net.URI;
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/categories")
@@ -56,6 +58,22 @@ public class CategoryController {
     public ResponseEntity<CategoryDTO> update(@Valid @RequestBody CategoryDTO dto, @PathVariable("id") Integer id) throws Exception {
         Category obj = service.update(modelMapper.map(dto, Category.class), id);
         return ResponseEntity.ok(modelMapper.map(obj, CategoryDTO.class));
+    }
+
+    /**
+     * Cambia el area de la categoria. Por defecto arrastra a sus productos: la
+     * comanda se enruta por el area del producto, asi que sin eso el cambio no
+     * sirve de nada para lo que ya esta cargado.
+     */
+    @PatchMapping("/{id}/station")
+    public ResponseEntity<CategoryDTO> changeStation(
+            @PathVariable("id") Integer id,
+            @RequestBody Map<String, Object> body) throws Exception {
+        KitchenStation station = KitchenStation.valueOf(String.valueOf(body.get("station")));
+        boolean moveProducts = !Boolean.FALSE.equals(body.get("moveProducts"));
+
+        Category updated = service.changeStation(id, station, moveProducts);
+        return ResponseEntity.ok(modelMapper.map(updated, CategoryDTO.class));
     }
 
     @DeleteMapping("/{id}")

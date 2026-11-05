@@ -3,6 +3,7 @@ package com.carretero.dto;
 import com.carretero.model.enums.DocumentType;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -28,7 +29,13 @@ public class ClientDTO {
     @Size(max = 150, message = "El nombre no debe superar 150 caracteres")
     private String name;
 
-    @Size(max = 20, message = "El teléfono no debe superar 20 caracteres")
+    /**
+     * Telefono peruano: como maximo 9 digitos (los celulares son 9 y empiezan en
+     * 9; los fijos con codigo de area no pasan de esa longitud). Se guarda solo
+     * el numero, sin prefijo +51 ni separadores, para que la busqueda por
+     * telefono encuentre al cliente tal como el cajero lo teclea.
+     */
+    @Pattern(regexp = "^$|^[0-9]{6,9}$", message = "El teléfono debe tener entre 6 y 9 dígitos, sin espacios ni prefijos")
     private String phone;
 
     private String email;

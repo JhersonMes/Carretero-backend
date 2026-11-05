@@ -37,6 +37,7 @@ public class DataInitializer implements CommandLineRunner {
         initCarteraCarretero();
         initBebidas();
         initDiningTables();
+        backfillTableOrder();
         initConfig();
     }
 
@@ -370,19 +371,57 @@ public class DataInitializer implements CommandLineRunner {
         }
     }
 
+    /**
+     * Asigna una posicion en el plano a las mesas que aun no la tienen.
+     *
+     * Las mesas creadas antes de existir la columna order_index quedan en null y
+     * caerian todas al final del salon en el mismo monton. Se les da un orden
+     * inicial por id (que es el orden en que se registraron) y a partir de ahi el
+     * administrador las reacomoda arrastrandolas. Solo toca las que estan en null,
+     * asi que nunca pisa un plano ya acomodado a mano.
+     */
+    private void backfillTableOrder() {
+        List<DiningTable> pending = tableRepo.findAllOrdered().stream()
+                .filter(t -> t.getOrderIndex() == null)
+                .toList();
+
+        if (pending.isEmpty()) {
+            return;
+        }
+
+        int next = tableRepo.findAllOrdered().stream()
+                .map(DiningTable::getOrderIndex)
+                .filter(java.util.Objects::nonNull)
+                .max(Integer::compareTo)
+                .map(max -> max + 1)
+                .orElse(0);
+
+        for (DiningTable table : pending) {
+            table.setOrderIndex(next++);
+            tableRepo.save(table);
+        }
+        log.info("Se asigno posicion en el plano del salon a {} mesa(s) sin orden previo.", pending.size());
+    }
+
     private void initConfig() {
         if (configRepo.count() == 0) {
             BusinessConfig config = new BusinessConfig();
-            config.setBusinessName("EL CARRETERO");
-            config.setCommercialName("EL CARRETERO BURGERS & WINGS");
-            config.setRuc("20601234567");
-            config.setAddress("Av. Principal 456, Lima");
-            config.setPhone("987654321");
+            // Datos de la ficha RUC de SUNAT: son los que encabezan cada boleta,
+            // asi que van tal como estan inscritos y no con un nombre de fantasia.
+            config.setBusinessName("EL CARRETERO E.I.R.L.");
+            config.setCommercialName("EL CARRETERO");
+            config.setRuc("20610046097");
+            config.setAddress("Jr. Irene Silva Nro. 183, Urb. Horacio Zevallos - Cajamarca");
+            config.setPhone("993793724");
             config.setEmail("contacto@elcarretero.pe");
             config.setBoletaSeries("B001");
             config.setFacturaSeries("F001");
             config.setNotaVentaSeries("NV01");
+            // PIN que autoriza anular o corregir una venta. Se guarda cifrado y
+            // solo se puede reemplazar, nunca consultar.
+            config.setAdminPin(passwordEncoder.encode("5555"));
             configRepo.save(config);
+            log.warn("PIN de anulacion inicial: 5555. Cambialo desde PUT /business-config/admin-pin.");
             log.info("Configuración general inicial de El Carretero registrada.");
         }
     }

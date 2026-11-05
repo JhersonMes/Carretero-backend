@@ -58,6 +58,27 @@ public class PaymentController {
         return ResponseEntity.ok(list);
     }
 
+    /**
+     * Las ventas que cobro el propio usuario en ese turno.
+     *
+     * El turno viaja en la URL pero el usuario no: sale de la sesion. Si se
+     * aceptara por parametro, cualquiera podria pedir las ventas de otro
+     * cambiando un numero, y las ventas de cada quien solo le competen a el.
+     */
+    @GetMapping("/shift/{idCashShift}/mine")
+    public ResponseEntity<List<PaymentDTO>> findMineByShift(@PathVariable("idCashShift") Integer idCashShift) {
+        String username = SecurityContextHolder.getContext().getAuthentication().getName();
+        User currentUser = userRepo.findOneByUsername(username);
+        if (currentUser == null) {
+            return ResponseEntity.ok(List.of());
+        }
+
+        List<PaymentDTO> list = service.findByCashShiftAndUser(idCashShift, currentUser.getIdUser()).stream()
+                .map(this::mapToDTO)
+                .toList();
+        return ResponseEntity.ok(list);
+    }
+
     @GetMapping("/{id}")
     public ResponseEntity<PaymentDTO> findById(@PathVariable("id") Integer id) throws Exception {
         Payment obj = service.findById(id);
@@ -79,7 +100,15 @@ public class PaymentController {
         if (payment == null) return null;
         PaymentDTO dto = new PaymentDTO();
         dto.setIdPayment(payment.getIdPayment());
-        dto.setIdOrder(payment.getOrder() != null ? payment.getOrder().getIdOrder() : null);
+        if (payment.getOrder() != null) {
+            dto.setIdOrder(payment.getOrder().getIdOrder());
+            dto.setOrderCode(payment.getOrder().getOrderCode());
+            dto.setSaleType(payment.getOrder().getSaleType());
+            dto.setOrderStatus(payment.getOrder().getStatus());
+            if (payment.getOrder().getTable() != null) {
+                dto.setTableName(payment.getOrder().getTable().getName());
+            }
+        }
         dto.setIdCashShift(payment.getCashShift() != null ? payment.getCashShift().getIdCashShift() : null);
         dto.setAmount(payment.getAmount());
         dto.setAmountTendered(payment.getAmountTendered());

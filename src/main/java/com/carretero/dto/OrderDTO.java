@@ -33,6 +33,11 @@ public class OrderDTO {
 
     private List<OrderDetailDTO> details;
 
+    /** Quien anulo la venta, cuando y por que. Null si la venta sigue vigente. */
+    private UserDTO cancelledBy;
+    private LocalDateTime cancelledAt;
+    private String cancelReason;
+
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }

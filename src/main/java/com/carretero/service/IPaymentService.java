@@ -10,4 +10,5 @@ public interface IPaymentService extends IGenericService<Payment, Integer> {
     List<Payment> registerPayments(PaymentCreateRequestDTO request, User user) throws Exception;
     List<Payment> findByOrderId(Integer idOrder);
     List<Payment> findByCashShiftId(Integer idCashShift);
+    List<Payment> findByCashShiftAndUser(Integer idCashShift, Integer idUser);
 }

@@ -30,6 +30,14 @@ public class DiningTable {
     @Column(nullable = false, length = 30)
     private TableStatus status = TableStatus.LIBRE;
 
+    /**
+     * Posicion de la mesa en el plano del salon, definida por el administrador
+     * arrastrando las mesas. Es nullable porque las mesas creadas antes de existir
+     * esta columna quedan en null; DataInitializer les asigna un orden al arrancar.
+     */
+    @Column(name = "order_index")
+    private Integer orderIndex;
+
     @Column(nullable = false)
     private boolean active = true;
 }

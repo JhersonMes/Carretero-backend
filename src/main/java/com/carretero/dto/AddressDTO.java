@@ -1,11 +1,13 @@
 package com.carretero.dto;
 
+import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 @Data
@@ -31,6 +33,9 @@ public class AddressDTO {
     private String district;
 
     private boolean favorite = false;
+
+    @DecimalMin(value = "0.00", message = "El costo de delivery no puede ser negativo")
+    private BigDecimal deliveryFee = BigDecimal.ZERO;
 
     private LocalDateTime createdAt;
 }

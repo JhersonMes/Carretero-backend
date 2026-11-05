@@ -3,12 +3,15 @@ package com.carretero.service.implementation;
 import com.carretero.dto.OrderCreateRequestDTO;
 import com.carretero.exception.ModelNotFoundException;
 import com.carretero.model.*;
+import com.carretero.model.enums.CashShiftStatus;
 import com.carretero.model.enums.KitchenStation;
 import com.carretero.model.enums.OrderItemStatus;
 import com.carretero.model.enums.OrderStatus;
 import com.carretero.model.enums.OrderType;
+import com.carretero.model.enums.SunatStatus;
 import com.carretero.model.enums.TableStatus;
 import com.carretero.repository.*;
+import com.carretero.service.IBusinessConfigService;
 import com.carretero.service.ICashShiftService;
 import com.carretero.service.IOrderService;
 import lombok.RequiredArgsConstructor;
@@ -34,7 +37,10 @@ public class OrderService extends GenericService<Order, Integer> implements IOrd
     private final IClientRepository clientRepo;
     private final IAddressRepository addressRepo;
     private final IFlavorRepository flavorRepo;
+    private final IPaymentRepository paymentRepo;
+    private final IInvoiceRepository invoiceRepo;
     private final ICashShiftService cashShiftService;
+    private final IBusinessConfigService businessConfigService;
 
     @Override
     protected IGenericRepository<Order, Integer> getRepo() {
@@ -42,7 +48,7 @@ public class OrderService extends GenericService<Order, Integer> implements IOrd
     }
 
     @Override
-    @Transactional
+    @Transactional(rollbackFor = Exception.class)
     public Order createOrder(OrderCreateRequestDTO request, User user) throws Exception {
         if (cashShiftService.getActiveShift().isEmpty()) {
             throw new IllegalStateException("No hay una caja aperturada. Debes aperturar caja antes de enviar pedidos.");
@@ -56,13 +62,13 @@ public class OrderService extends GenericService<Order, Integer> implements IOrd
         order.setDeliveryFee(request.getDeliveryFee() != null ? request.getDeliveryFee() : BigDecimal.ZERO);
         order.setDiscount(request.getDiscount() != null ? request.getDiscount() : BigDecimal.ZERO);
 
-        // Generar código de pedido del día ej. PED-20260823-0001
+        // Generar cÃ³digo de pedido del dÃ­a ej. PED-20260823-0001
         LocalDateTime startOfDay = LocalDate.now().atStartOfDay();
         Long countToday = repo.countOrdersToday(startOfDay);
         String dateStr = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
         order.setOrderCode(String.format("PED-%s-%04d", dateStr, countToday + 1));
 
-        // Asignar Mesa si es Salón
+        // Asignar Mesa si es SalÃ³n
         if (order.getSaleType() == OrderType.SALON && request.getIdTable() != null) {
             DiningTable table = tableRepo.findById(request.getIdTable())
                     .orElseThrow(() -> new ModelNotFoundException("Mesa no encontrada: " + request.getIdTable()));
@@ -71,18 +77,23 @@ public class OrderService extends GenericService<Order, Integer> implements IOrd
             order.setTable(table);
         }
 
-        // Asignar Cliente si se especificó
+        // Asignar Cliente si se especificÃ³
         if (request.getIdClient() != null) {
             Client client = clientRepo.findById(request.getIdClient())
                     .orElseThrow(() -> new ModelNotFoundException("Cliente no encontrado: " + request.getIdClient()));
             order.setClient(client);
         }
 
-        // Asignar Dirección si es Delivery
+        // Asignar DirecciÃ³n si es Delivery
         if (order.getSaleType() == OrderType.DELIVERY && request.getIdAddress() != null) {
             Address address = addressRepo.findById(request.getIdAddress())
-                    .orElseThrow(() -> new ModelNotFoundException("Dirección no encontrada: " + request.getIdAddress()));
+                    .orElseThrow(() -> new ModelNotFoundException("DirecciÃ³n no encontrada: " + request.getIdAddress()));
             order.setDeliveryAddress(address);
+            // La tarifa la fija el jiron al que se reparte. Si la venta no manda una
+            // propia, se cobra la que quedo guardada junto con la direccion.
+            if (request.getDeliveryFee() == null && address.getDeliveryFee() != null) {
+                order.setDeliveryFee(address.getDeliveryFee());
+            }
         }
 
         List<OrderDetail> details = new ArrayList<>();
@@ -94,12 +105,14 @@ public class OrderService extends GenericService<Order, Integer> implements IOrd
 
             OrderDetail detail = new OrderDetail();
             detail.setOrder(order);
+            detail.setUser(user);
             detail.setProduct(product);
             detail.setProductName(product.getName());
             BigDecimal unitPrice = resolveUnitPrice(product, itemReq);
             detail.setQuantity(itemReq.getQuantity());
             detail.setUnitPrice(unitPrice);
             detail.setFlavorName(itemReq.getFlavorName());
+            detail.setStation(itemReq.getStation());
             detail.setNotes(itemReq.getNotes());
 
             BigDecimal itemSubtotal = unitPrice.multiply(BigDecimal.valueOf(itemReq.getQuantity()));
@@ -123,10 +136,14 @@ public class OrderService extends GenericService<Order, Integer> implements IOrd
     }
 
     @Override
-    @Transactional
-    public Order addItemsToOrder(Integer idOrder, List<OrderCreateRequestDTO.OrderItemRequestDTO> items) throws Exception {
+    @Transactional(rollbackFor = Exception.class)
+    public Order addItemsToOrder(Integer idOrder, List<OrderCreateRequestDTO.OrderItemRequestDTO> items, User user) throws Exception {
         Order order = repo.findById(idOrder)
                 .orElseThrow(() -> new ModelNotFoundException("Pedido no encontrado: " + idOrder));
+
+        if (order.getStatus() == OrderStatus.PAGADO || order.getStatus() == OrderStatus.CANCELADO) {
+            throw new IllegalStateException("No se pueden agregar platos a un pedido ya cerrado (" + order.getStatus() + ").");
+        }
 
         for (OrderCreateRequestDTO.OrderItemRequestDTO itemReq : items) {
             Product product = productRepo.findById(itemReq.getIdProduct())
@@ -134,12 +151,16 @@ public class OrderService extends GenericService<Order, Integer> implements IOrd
 
             OrderDetail detail = new OrderDetail();
             detail.setOrder(order);
+            // Quien agrega el plato queda registrado en el item: en una mesa larga
+            // pueden turnarse varios meseros y el salon debe mostrarlos a todos.
+            detail.setUser(user);
             detail.setProduct(product);
             detail.setProductName(product.getName());
             BigDecimal unitPrice = resolveUnitPrice(product, itemReq);
             detail.setQuantity(itemReq.getQuantity());
             detail.setUnitPrice(unitPrice);
             detail.setFlavorName(itemReq.getFlavorName());
+            detail.setStation(itemReq.getStation());
             detail.setNotes(itemReq.getNotes());
 
             BigDecimal itemSubtotal = unitPrice.multiply(BigDecimal.valueOf(itemReq.getQuantity()));
@@ -155,15 +176,147 @@ public class OrderService extends GenericService<Order, Integer> implements IOrd
         return repo.save(order);
     }
 
+    /**
+     * Anula una venta ya cobrada.
+     *
+     * No borra nada: el pedido queda CANCELADO con quien lo anulo, cuando y por
+     * que; los cobros siguen en su turno pero dejan de sumar al arqueo, y el
+     * comprobante queda ANULADO. Asi la caja cuadra y despues se puede explicar
+     * cada anulacion, que es justo lo que un borrado haria imposible.
+     *
+     * El PIN lo valida el servidor. Es lo unico que separa a cualquiera de poder
+     * deshacer una venta cobrada, y comprobarlo en la pantalla no protege nada.
+     */
     @Override
-    @Transactional
+    @Transactional(rollbackFor = Exception.class)
+    public Order cancelOrder(Integer idOrder, String pin, String reason, User user) throws Exception {
+        if (!businessConfigService.matchesAdminPin(pin)) {
+            throw new IllegalArgumentException("El PIN de autorizacion no es correcto.");
+        }
+
+        Order order = repo.findByIdWithDetails(idOrder)
+                .orElseThrow(() -> new ModelNotFoundException("Pedido no encontrado: " + idOrder));
+
+        if (order.getStatus() == OrderStatus.CANCELADO) {
+            throw new IllegalStateException("El pedido " + order.getOrderCode() + " ya estaba anulado.");
+        }
+
+        // Un turno cerrado ya fue arqueado y su plata contada: tocarlo cambiaria
+        // un cuadre que alguien ya firmo.
+        List<Payment> payments = paymentRepo.findByOrderIdOrder(idOrder);
+        for (Payment payment : payments) {
+            CashShift shift = payment.getCashShift();
+            if (shift != null && shift.getStatus() == CashShiftStatus.CERRADA) {
+                throw new IllegalStateException(
+                        "El pedido " + order.getOrderCode() + " se cobro en un turno de caja ya cerrado "
+                                + "y no se puede anular. Registra la devolucion como movimiento de caja.");
+            }
+        }
+
+        order.setStatus(OrderStatus.CANCELADO);
+        order.setCancelledBy(user);
+        order.setCancelledAt(LocalDateTime.now());
+        order.setCancelReason(reason != null && !reason.isBlank() ? reason.trim() : null);
+
+        // La mesa vuelve a estar libre si no le queda ningun otro pedido abierto.
+        if (order.getTable() != null) {
+            List<Order> activeTableOrders = repo.findByTableIdTableAndStatusNotIn(
+                    order.getTable().getIdTable(),
+                    List.of(OrderStatus.PAGADO, OrderStatus.CANCELADO));
+            if (activeTableOrders.stream().noneMatch(o -> !o.getIdOrder().equals(idOrder))) {
+                DiningTable table = order.getTable();
+                table.setStatus(TableStatus.LIBRE);
+                tableRepo.save(table);
+            }
+        }
+
+        Order saved = repo.save(order);
+
+        // El comprobante de una venta anulada no puede seguir vigente.
+        invoiceRepo.findByOrderIdOrderAndSunatStatusNot(idOrder, SunatStatus.ANULADO)
+                .forEach(invoice -> {
+                    invoice.setSunatStatus(SunatStatus.ANULADO);
+                    invoice.setSunatDescription("Anulado junto con el pedido " + order.getOrderCode());
+                    invoiceRepo.save(invoice);
+                });
+
+        // Los cobros anulados dejan de contar en el turno; el recalculo los excluye.
+        for (Payment payment : payments) {
+            if (payment.getCashShift() != null) {
+                cashShiftService.recalculateShiftTotals(payment.getCashShift().getIdCashShift());
+            }
+        }
+
+        return saved;
+    }
+
+    /**
+     * Quita un plato de un pedido ya enviado y recalcula la cuenta.
+     *
+     * Es para el error de comanda: se mando algo que el cliente no pidio. Pide
+     * PIN porque baja el monto de una cuenta abierta y porque el plato pudo
+     * haberse cocinado ya; agregar, en cambio, no lo pide.
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Order removeItem(Integer idOrderDetail, String pin, User user) throws Exception {
+        if (!businessConfigService.matchesAdminPin(pin)) {
+            throw new IllegalArgumentException("El PIN de autorizacion no es correcto.");
+        }
+
+        OrderDetail detail = orderDetailRepo.findById(idOrderDetail)
+                .orElseThrow(() -> new ModelNotFoundException("Item de pedido no encontrado: " + idOrderDetail));
+
+        Order order = repo.findByIdWithDetails(detail.getOrder().getIdOrder())
+                .orElseThrow(() -> new ModelNotFoundException("Pedido no encontrado"));
+
+        if (order.getStatus() == OrderStatus.PAGADO || order.getStatus() == OrderStatus.CANCELADO) {
+            throw new IllegalStateException(
+                    "El pedido " + order.getOrderCode() + " ya esta cerrado: no se le pueden quitar platos.");
+        }
+
+        // Vaciar el pedido plato por plato dejaria una mesa ocupada por una cuenta
+        // en cero. Si no queda nada que servir, lo que corresponde es anularlo.
+        if (order.getDetails().size() <= 1) {
+            throw new IllegalStateException(
+                    "Es el unico plato del pedido. Para dejarlo sin nada, anula el pedido completo.");
+        }
+
+        order.getDetails().removeIf(d -> d.getIdOrderDetail().equals(idOrderDetail));
+        orderDetailRepo.delete(detail);
+
+        recalculateOrderTotals(order);
+        return repo.save(order);
+    }
+
+    /**
+     * Nota del plato (ej. "sin aji"). No pide PIN: no toca el monto y suele ser
+     * justamente lo que hay que corregir a ultimo momento.
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public OrderDetail updateItemNotes(Integer idOrderDetail, String notes) throws Exception {
+        OrderDetail detail = orderDetailRepo.findById(idOrderDetail)
+                .orElseThrow(() -> new ModelNotFoundException("Item de pedido no encontrado: " + idOrderDetail));
+
+        detail.setNotes(notes != null && !notes.isBlank() ? notes.trim() : null);
+        return orderDetailRepo.save(detail);
+    }
+
+    @Override
+    public List<Order> findCancelledOrders() {
+        return repo.findByStatusWithDetails(OrderStatus.CANCELADO);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
     public Order updateOrderStatus(Integer idOrder, OrderStatus status) throws Exception {
         Order order = repo.findById(idOrder)
                 .orElseThrow(() -> new ModelNotFoundException("Pedido no encontrado: " + idOrder));
 
         order.setStatus(status);
 
-        // Si el pedido se pagó o se canceló y estaba en una mesa, liberar la mesa si no hay más pedidos activos
+        // Si el pedido se pagÃ³ o se cancelÃ³ y estaba en una mesa, liberar la mesa si no hay mÃ¡s pedidos activos
         if ((status == OrderStatus.PAGADO || status == OrderStatus.CANCELADO) && order.getTable() != null) {
             List<Order> activeTableOrders = repo.findByTableIdTableAndStatusNotIn(
                     order.getTable().getIdTable(),
@@ -180,11 +333,20 @@ public class OrderService extends GenericService<Order, Integer> implements IOrd
     }
 
     @Override
-    @Transactional
+    @Transactional(rollbackFor = Exception.class)
     public OrderDetail updateItemStatus(Integer idOrderDetail, OrderItemStatus status) throws Exception {
         OrderDetail detail = orderDetailRepo.findById(idOrderDetail)
                 .orElseThrow(() -> new ModelNotFoundException("Item de pedido no encontrado: " + idOrderDetail));
         detail.setItemStatus(status);
+
+        // El sello de despacho detiene el cronometro que ve el mesero en la mesa.
+        // Si la estacion devuelve el item a preparacion, el cronometro vuelve a correr.
+        if (status == OrderItemStatus.LISTO) {
+            detail.setReadyAt(LocalDateTime.now());
+        } else {
+            detail.setReadyAt(null);
+        }
+
         return orderDetailRepo.save(detail);
     }
 
@@ -227,7 +389,7 @@ public class OrderService extends GenericService<Order, Integer> implements IOrd
     @Override
     public Order findByOrderCode(String orderCode) throws Exception {
         return repo.findByOrderCodeWithDetails(orderCode)
-                .orElseThrow(() -> new ModelNotFoundException("Pedido no encontrado con código: " + orderCode));
+                .orElseThrow(() -> new ModelNotFoundException("Pedido no encontrado con cÃ³digo: " + orderCode));
     }
 
     @Override
@@ -242,7 +404,9 @@ public class OrderService extends GenericService<Order, Integer> implements IOrd
         return orderDetailRepo.findPendingByStation(
                 List.of(OrderItemStatus.PENDIENTE, OrderItemStatus.EN_PREPARACION),
                 station,
-                List.of(OrderStatus.PAGADO, OrderStatus.CANCELADO)
+                OrderStatus.CANCELADO,
+                OrderStatus.PAGADO,
+                OrderType.SALON
         );
     }
 

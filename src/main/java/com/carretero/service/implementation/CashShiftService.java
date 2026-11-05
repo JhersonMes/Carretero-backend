@@ -4,13 +4,16 @@ import com.carretero.dto.CashMovementDTO;
 import com.carretero.exception.ModelNotFoundException;
 import com.carretero.model.CashMovement;
 import com.carretero.model.CashShift;
+import com.carretero.model.Order;
 import com.carretero.model.Payment;
 import com.carretero.model.User;
 import com.carretero.model.enums.CashMovementType;
 import com.carretero.model.enums.CashShiftStatus;
+import com.carretero.model.enums.OrderStatus;
 import com.carretero.repository.ICashMovementRepository;
 import com.carretero.repository.ICashShiftRepository;
 import com.carretero.repository.IGenericRepository;
+import com.carretero.repository.IOrderRepository;
 import com.carretero.repository.IPaymentRepository;
 import com.carretero.service.ICashShiftService;
 import lombok.RequiredArgsConstructor;
@@ -26,9 +29,14 @@ import java.util.Optional;
 @RequiredArgsConstructor
 public class CashShiftService extends GenericService<CashShift, Integer> implements ICashShiftService {
 
+    /** Estados en los que el pedido ya no espera cobro. */
+    private static final List<OrderStatus> COLLECTED_STATUSES =
+            List.of(OrderStatus.PAGADO, OrderStatus.CANCELADO);
+
     private final ICashShiftRepository repo;
     private final ICashMovementRepository movementRepo;
     private final IPaymentRepository paymentRepo;
+    private final IOrderRepository orderRepo;
 
     @Override
     protected IGenericRepository<CashShift, Integer> getRepo() {
@@ -36,7 +44,7 @@ public class CashShiftService extends GenericService<CashShift, Integer> impleme
     }
 
     @Override
-    @Transactional
+    @Transactional(rollbackFor = Exception.class)
     public CashShift openShift(BigDecimal initialAmount, User user, String notes) throws Exception {
         Optional<CashShift> active = repo.findFirstByStatusOrderByOpenTimeDesc(CashShiftStatus.ABIERTA);
         if (active.isPresent()) {
@@ -60,7 +68,7 @@ public class CashShiftService extends GenericService<CashShift, Integer> impleme
     }
 
     @Override
-    @Transactional
+    @Transactional(rollbackFor = Exception.class)
     public CashShift closeShift(Integer idCashShift, BigDecimal actualCash, String notes) throws Exception {
         CashShift shift = repo.findById(idCashShift)
                 .orElseThrow(() -> new ModelNotFoundException("Turno de caja no encontrado: " + idCashShift));
@@ -68,6 +76,8 @@ public class CashShiftService extends GenericService<CashShift, Integer> impleme
         if (shift.getStatus() == CashShiftStatus.CERRADA) {
             throw new IllegalStateException("El turno de caja ya se encuentra cerrado.");
         }
+
+        assertNothingLeftToCollect();
 
         // Recalcular montos consolidados antes del cierre
         recalculateShiftTotals(idCashShift);
@@ -83,14 +93,55 @@ public class CashShiftService extends GenericService<CashShift, Integer> impleme
         return repo.save(shift);
     }
 
+    /**
+     * La caja no cierra mientras queden mesas sin cobrar.
+     *
+     * La condicion se evalua sobre el estado real de la mesa y no sobre quien la
+     * atendio: una mesa la pueden haber servido varios meseros, y basta con que
+     * cualquiera de ellos la baje para que deje de bloquear a todos. Si en cambio se
+     * llevara una cuenta por mesero, cobrar dejaria libre a uno y seguiria trabando a
+     * los demas con una mesa que ya no existe.
+     *
+     * Solo cuenta el salon. La venta rapida se cobra al momento de tomar el pedido,
+     * de modo que nunca deja una cuenta abierta que reclamar al cliente.
+     */
+    private void assertNothingLeftToCollect() {
+        List<String> tables = orderRepo.findUncollectedTableOrders(COLLECTED_STATUSES).stream()
+                .map(order -> order.getTable().getName())
+                .distinct()
+                .toList();
+
+        if (tables.isEmpty()) {
+            return;
+        }
+
+        boolean single = tables.size() == 1;
+        String count = single ? "falta cobrar 1 mesa" : "faltan cobrar " + tables.size() + " mesas";
+        String call = single ? "Cobrala" : "Cobralas";
+
+        throw new IllegalStateException(
+                "No se puede cerrar la caja: " + count + " (" + String.join(", ", tables) + "). "
+                        + call + " desde Salon antes de cerrar el turno.");
+    }
+
     @Override
-    @Transactional
+    @Transactional(rollbackFor = Exception.class)
     public CashMovement registerMovement(CashMovementDTO dto, User user) throws Exception {
         CashShift shift = repo.findById(dto.getIdCashShift())
                 .orElseThrow(() -> new ModelNotFoundException("Turno de caja no encontrado: " + dto.getIdCashShift()));
 
         if (shift.getStatus() == CashShiftStatus.CERRADA) {
             throw new IllegalStateException("No se pueden registrar movimientos en un turno de caja cerrado.");
+        }
+
+        if (dto.getType() == null) {
+            throw new IllegalStateException("Elige si el movimiento es un ingreso o un egreso.");
+        }
+        if (dto.getAmount() == null || dto.getAmount().compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalStateException("El monto del movimiento debe ser mayor a 0.");
+        }
+        if (dto.getReason() == null || dto.getReason().trim().isEmpty()) {
+            throw new IllegalStateException("Escribe el motivo del movimiento.");
         }
 
         CashMovement movement = new CashMovement();
@@ -148,7 +199,7 @@ public class CashShiftService extends GenericService<CashShift, Integer> impleme
     }
 
     @Override
-    @Transactional
+    @Transactional(rollbackFor = Exception.class)
     public CashShift recalculateShiftTotals(Integer idCashShift) throws Exception {
         CashShift shift = repo.findById(idCashShift)
                 .orElseThrow(() -> new ModelNotFoundException("Turno de caja no encontrado: " + idCashShift));
@@ -163,6 +214,11 @@ public class CashShiftService extends GenericService<CashShift, Integer> impleme
         BigDecimal transferSales = BigDecimal.ZERO;
 
         for (Payment p : payments) {
+            // Una venta anulada no entra al arqueo. Su cobro se conserva como
+            // historial, pero el dinero ya no esta en la caja.
+            if (p.getOrder() != null && p.getOrder().getStatus() == OrderStatus.CANCELADO) {
+                continue;
+            }
             String m = p.getPaymentMethod() != null ? p.getPaymentMethod().getName().toUpperCase() : "";
             if (m.contains("EFECTIVO")) cashSales = cashSales.add(p.getAmount());
             else if (m.contains("TARJETA")) cardSales = cardSales.add(p.getAmount());

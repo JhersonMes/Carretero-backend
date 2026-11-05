@@ -16,10 +16,15 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 @Entity
-@Table(name = "clients", indexes = {
-        @Index(name = "idx_client_doc", columnList = "docNumber"),
-        @Index(name = "idx_client_phone", columnList = "phone")
-})
+@Table(name = "clients",
+        indexes = {
+                @Index(name = "idx_client_doc", columnList = "docNumber"),
+                @Index(name = "idx_client_phone", columnList = "phone")
+        },
+        // Un documento identifica a una sola persona: no puede haber dos fichas con
+        // el mismo DNI o RUC. Los clientes sin documento quedan en NULL, y MySQL
+        // admite tantos NULL como haga falta en un indice unico.
+        uniqueConstraints = @UniqueConstraint(name = "uk_client_doc_number", columnNames = "docNumber"))
 @EqualsAndHashCode(onlyExplicitlyIncluded = true)
 public class Client {
 

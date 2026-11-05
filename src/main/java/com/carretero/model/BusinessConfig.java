@@ -1,5 +1,6 @@
 package com.carretero.model;
 
+import com.carretero.model.enums.SunatEnvironment;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -37,6 +38,16 @@ public class BusinessConfig {
     @Column(length = 100)
     private String email;
 
+    /**
+     * PIN que autoriza anular una venta o reemitir su comprobante.
+     *
+     * Se guarda cifrado, igual que las contrasenas: quien tenga acceso a la base
+     * no debe poder leer el codigo con el que se anulan ventas. Por eso tampoco
+     * viaja nunca en el DTO de configuracion.
+     */
+    @Column(name = "admin_pin", length = 200)
+    private String adminPin;
+
     // Series de facturación
     @Column(length = 10)
     private String boletaSeries = "B001";
@@ -48,6 +59,19 @@ public class BusinessConfig {
     private String notaVentaSeries = "NV01";
 
     // Configuración API DNI / RUC y SUNAT
+
+    /**
+     * Ambiente contra el que se emiten los comprobantes.
+     *
+     * Se elige a mano y no se deduce de si hay token cargado: pasar a produccion
+     * tiene que ser una decision visible. Queda nullable a proposito para que
+     * agregar la columna no rompa las bases que ya existen; quien la lee trata el
+     * null como SIMULADO.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "sunat_environment", length = 20)
+    private SunatEnvironment sunatEnvironment = SunatEnvironment.SIMULADO;
+
     @Column(length = 255)
     private String sunatApiUrl;
 

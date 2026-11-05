@@ -26,5 +26,8 @@ public class DiningTableDTO {
 
     private TableStatus status = TableStatus.LIBRE;
 
+    /** Posicion en el plano del salon. La define el administrador arrastrando las mesas. */
+    private Integer orderIndex;
+
     private boolean active = true;
 }

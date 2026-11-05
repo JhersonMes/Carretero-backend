@@ -8,6 +8,7 @@ import com.carretero.model.enums.OrderStatus;
 import com.carretero.model.enums.OrderType;
 import com.carretero.repository.IUserRepository;
 import com.carretero.service.IOrderService;
+import com.carretero.service.OrderBoardNotifier;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.modelmapper.ModelMapper;
@@ -16,7 +17,6 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
@@ -29,11 +29,9 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class OrderController {
 
-    private static final String KITCHEN_TOPIC = "/topic/kitchen";
-
     private final IOrderService service;
     private final IUserRepository userRepo;
-    private final SimpMessagingTemplate messagingTemplate;
+    private final OrderBoardNotifier boardNotifier;
 
     @Qualifier("orderMapper")
     private final ModelMapper orderMapper;
@@ -130,7 +128,10 @@ public class OrderController {
     public ResponseEntity<OrderDTO> addItemsToOrder(
             @PathVariable("id") Integer id,
             @Valid @RequestBody List<OrderCreateRequestDTO.OrderItemRequestDTO> items) throws Exception {
-        Order updated = service.addItemsToOrder(id, items);
+        String username = SecurityContextHolder.getContext().getAuthentication().getName();
+        User currentUser = userRepo.findOneByUsername(username);
+
+        Order updated = service.addItemsToOrder(id, items, currentUser);
         notifyKitchen();
         return ResponseEntity.ok(mapToDTO(updated));
     }
@@ -149,6 +150,72 @@ public class OrderController {
         return ResponseEntity.ok(mapToDTO(updated));
     }
 
+    /**
+     * Anula una venta. El PIN viaja en el cuerpo y lo valida el servicio; el
+     * usuario que anula sale de la sesion, no del cliente.
+     */
+    @PostMapping("/{id}/cancel")
+    @PreAuthorize("hasAuthority('ADMIN') or hasAuthority('MESERO') or hasAuthority('CAJERO')")
+    public ResponseEntity<OrderDTO> cancelOrder(
+            @PathVariable("id") Integer id,
+            @RequestBody Map<String, String> body) throws Exception {
+        String username = SecurityContextHolder.getContext().getAuthentication().getName();
+        User currentUser = userRepo.findOneByUsername(username);
+
+        Order cancelled = service.cancelOrder(id, body.get("pin"), body.get("reason"), currentUser);
+        notifyKitchen();
+        return ResponseEntity.ok(mapToDTO(cancelled));
+    }
+
+    /**
+     * Quita un plato de un pedido abierto. El PIN va por parametro porque un
+     * DELETE con cuerpo no lo soportan bien todos los clientes HTTP.
+     */
+    @DeleteMapping("/items/{idOrderDetail}")
+    @PreAuthorize("hasAuthority('ADMIN') or hasAuthority('MESERO') or hasAuthority('CAJERO')")
+    public ResponseEntity<OrderDTO> removeItem(
+            @PathVariable("idOrderDetail") Integer idOrderDetail,
+            @RequestParam("pin") String pin) throws Exception {
+        String username = SecurityContextHolder.getContext().getAuthentication().getName();
+        User currentUser = userRepo.findOneByUsername(username);
+
+        Order order = service.removeItem(idOrderDetail, pin, currentUser);
+        notifyKitchen();
+        return ResponseEntity.ok(mapToDTO(order));
+    }
+
+    /** Nota del plato: "sin aji", "para llevar". No mueve el monto. */
+    @PatchMapping("/items/{idOrderDetail}/notes")
+    public ResponseEntity<OrderDetailDTO> updateItemNotes(
+            @PathVariable("idOrderDetail") Integer idOrderDetail,
+            @RequestBody Map<String, String> body) throws Exception {
+        OrderDetail updated = service.updateItemNotes(idOrderDetail, body.get("notes"));
+        notifyKitchen();
+        return ResponseEntity.ok(new OrderDetailDTO(
+                updated.getIdOrderDetail(),
+                updated.getProduct() != null ? updated.getProduct().getIdProduct() : null,
+                updated.getProductName(),
+                updated.getQuantity(),
+                updated.getUnitPrice(),
+                updated.getFlavorName(),
+                updated.getStation(),
+                updated.getProduct() != null ? updated.getProduct().getStation() : null,
+                updated.getNotes(),
+                updated.getSubtotal(),
+                updated.getItemStatus()
+        ));
+    }
+
+    /** Ventas anuladas, para el panel de administracion. */
+    @GetMapping("/cancelled")
+    @PreAuthorize("hasAuthority('ADMIN')")
+    public ResponseEntity<List<OrderDTO>> findCancelled() {
+        List<OrderDTO> list = service.findCancelledOrders().stream()
+                .map(this::mapToDTO)
+                .toList();
+        return ResponseEntity.ok(list);
+    }
+
     @PatchMapping("/items/{idOrderDetail}/status")
     public ResponseEntity<OrderDetailDTO> updateItemStatus(
             @PathVariable("idOrderDetail") Integer idOrderDetail,
@@ -165,6 +232,8 @@ public class OrderController {
                 updated.getQuantity(),
                 updated.getUnitPrice(),
                 updated.getFlavorName(),
+                updated.getStation(),
+                updated.getProduct() != null ? updated.getProduct().getStation() : null,
                 updated.getNotes(),
                 updated.getSubtotal(),
                 updated.getItemStatus()
@@ -185,7 +254,7 @@ public class OrderController {
     }
 
     private void notifyKitchen() {
-        messagingTemplate.convertAndSend(KITCHEN_TOPIC, Map.of("event", "KITCHEN_UPDATED"));
+        boardNotifier.notifyBoards();
     }
 
     private OrderDTO mapToDTO(Order order) {
@@ -215,6 +284,11 @@ public class OrderController {
         if (order.getDeliveryAddress() != null) {
             dto.setDeliveryAddress(addressMapper.map(order.getDeliveryAddress(), AddressDTO.class));
         }
+        if (order.getCancelledBy() != null) {
+            dto.setCancelledBy(userMapper.map(order.getCancelledBy(), UserDTO.class));
+        }
+        dto.setCancelledAt(order.getCancelledAt());
+        dto.setCancelReason(order.getCancelReason());
         if (order.getDetails() != null) {
             dto.setDetails(order.getDetails().stream()
                     .map(d -> new OrderDetailDTO(
@@ -224,6 +298,8 @@ public class OrderController {
                             d.getQuantity(),
                             d.getUnitPrice(),
                             d.getFlavorName(),
+                            d.getStation(),
+                            d.getProduct() != null ? d.getProduct().getStation() : null,
                             d.getNotes(),
                             d.getSubtotal(),
                             d.getItemStatus()

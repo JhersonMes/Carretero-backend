@@ -11,6 +11,7 @@ import com.carretero.repository.IPaymentRepository;
 import com.carretero.service.ICashShiftService;
 import com.carretero.service.IOrderService;
 import com.carretero.service.IPaymentService;
+import com.carretero.service.OrderBoardNotifier;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -30,6 +31,7 @@ public class PaymentService extends GenericService<Payment, Integer> implements 
     private final IPaymentMethodRepository paymentMethodRepo;
     private final ICashShiftService cashShiftService;
     private final IOrderService orderService;
+    private final OrderBoardNotifier boardNotifier;
 
     @Override
     protected IGenericRepository<Payment, Integer> getRepo() {
@@ -37,10 +39,20 @@ public class PaymentService extends GenericService<Payment, Integer> implements 
     }
 
     @Override
-    @Transactional
+    @Transactional(rollbackFor = Exception.class)
     public List<Payment> registerPayments(PaymentCreateRequestDTO request, User user) throws Exception {
         Order order = orderRepo.findById(request.getIdOrder())
                 .orElseThrow(() -> new ModelNotFoundException("Pedido no encontrado: " + request.getIdOrder()));
+
+        if (order.getStatus() == OrderStatus.CANCELADO) {
+            throw new IllegalStateException("No se puede cobrar un pedido cancelado: " + order.getOrderCode());
+        }
+
+        Optional<CashShift> activeShiftOpt = cashShiftService.getActiveShift();
+        if (activeShiftOpt.isEmpty()) {
+            throw new IllegalStateException("No hay un turno de caja abierto para registrar el cobro.");
+        }
+        CashShift activeShift = activeShiftOpt.get();
 
         BigDecimal alreadyPaid = repo.findByOrderIdOrder(order.getIdOrder()).stream()
                 .map(Payment::getAmount)
@@ -55,9 +67,6 @@ public class PaymentService extends GenericService<Payment, Integer> implements 
             throw new IllegalStateException(
                     "El monto ingresado (S/ " + incomingTotal + ") supera el saldo pendiente (S/ " + remaining + ").");
         }
-
-        Optional<CashShift> activeShiftOpt = cashShiftService.getActiveShift();
-        CashShift activeShift = activeShiftOpt.orElse(null);
 
         List<Payment> createdPayments = new ArrayList<>();
         BigDecimal totalPaidNow = BigDecimal.ZERO;
@@ -97,16 +106,32 @@ public class PaymentService extends GenericService<Payment, Integer> implements 
             orderService.updateOrderStatus(order.getIdOrder(), OrderStatus.PAGADO);
         }
 
+        // Cobrar libera la mesa: el tablero de Salon debe enterarse sin recargar.
+        boardNotifier.notifyBoards();
+
         return createdPayments;
+    }
+
+    // Las tres lecturas traen el pedido en la misma consulta: el DTO del cobro
+    // expone el codigo del pedido, y el pedido es LAZY.
+
+    @Override
+    public List<Payment> findAll() {
+        return repo.findAllWithOrder();
     }
 
     @Override
     public List<Payment> findByOrderId(Integer idOrder) {
-        return repo.findByOrderIdOrder(idOrder);
+        return repo.findByOrderWithOrder(idOrder);
     }
 
     @Override
     public List<Payment> findByCashShiftId(Integer idCashShift) {
-        return repo.findByCashShiftIdCashShift(idCashShift);
+        return repo.findByShiftWithOrder(idCashShift);
+    }
+
+    @Override
+    public List<Payment> findByCashShiftAndUser(Integer idCashShift, Integer idUser) {
+        return repo.findByShiftAndUserWithOrder(idCashShift, idUser);
     }
 }

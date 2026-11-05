@@ -1,5 +1,6 @@
 package com.carretero.dto;
 
+import com.carretero.model.enums.KitchenStation;
 import com.carretero.model.enums.OrderType;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotEmpty;
@@ -50,6 +51,12 @@ public class OrderCreateRequestDTO {
 
         /** Nombre de la opcion; se guarda en el detalle para que la comanda no cambie despues. */
         private String flavorName;
+
+        /**
+         * Area elegida para esta linea, cuando el producto no la trae fija (los
+         * adicionales). Null deja la del producto.
+         */
+        private KitchenStation station;
 
         private String notes;
     }

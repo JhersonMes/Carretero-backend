@@ -43,7 +43,8 @@ public class JwtRequestFilter extends OncePerRequestFilter {
         if (username != null && jwtToken != null && SecurityContextHolder.getContext().getAuthentication() == null) {
             UserDetails userDetails = jwtUserDetailsService.loadUserByUsername(username);
 
-            if (jwtTokenUtil.validateToken(jwtToken, userDetails)) {
+            // Un token emitido antes de dar de baja la cuenta deja de servir en ese momento.
+            if (userDetails.isEnabled() && jwtTokenUtil.validateToken(jwtToken, userDetails)) {
                 UsernamePasswordAuthenticationToken auth = new UsernamePasswordAuthenticationToken(
                         userDetails, null, userDetails.getAuthorities());
                 auth.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
@@ -62,6 +63,8 @@ public class JwtRequestFilter extends OncePerRequestFilter {
                 || path.equals("/index.html")
                 || path.equals("/login")
                 || path.equals("/register")
+                || path.equals("/auth/forgot-password")
+                || path.equals("/auth/reset-password")
                 || path.startsWith("/static")
                 || path.startsWith("/assets")
                 || path.endsWith(".js")

@@ -6,6 +6,7 @@ import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 @Data
@@ -40,6 +41,15 @@ public class Address {
 
     @Column(nullable = false)
     private boolean favorite = false;
+
+    /**
+     * Lo que se cobra por llevar el pedido hasta aqui. Vive en la direccion y no
+     * en el pedido porque la tarifa la fija el jiron: el mismo cliente paga
+     * distinto si pide a su casa o a su trabajo, y el cajero no deberia tener
+     * que acordarse del monto en cada venta.
+     */
+    @Column(name = "delivery_fee", precision = 10, scale = 2)
+    private BigDecimal deliveryFee = BigDecimal.ZERO;
 
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;

@@ -79,6 +79,32 @@ public class InvoiceController {
         return ResponseEntity.status(HttpStatus.CREATED).body(mapToDTO(emitted));
     }
 
+    /**
+     * Reemite el comprobante de una venta: mismo pedido y mismo total, con los
+     * datos del documento corregidos. Requiere el PIN, porque anula un
+     * comprobante ya emitido.
+     */
+    @PostMapping("/reissue")
+    @PreAuthorize("hasAuthority('ADMIN') or hasAuthority('MESERO') or hasAuthority('CAJERO')")
+    public ResponseEntity<InvoiceDTO> reissueInvoice(
+            @Valid @RequestBody InvoiceEmitRequestDTO request,
+            @RequestParam("pin") String pin) throws Exception {
+        String username = SecurityContextHolder.getContext().getAuthentication().getName();
+        User currentUser = userRepo.findOneByUsername(username);
+
+        Invoice emitted = service.reissueInvoice(request, pin, currentUser);
+        return ResponseEntity.status(HttpStatus.CREATED).body(mapToDTO(emitted));
+    }
+
+    /** Todos los comprobantes de un pedido, incluidos los anulados. */
+    @GetMapping("/order/{idOrder}/all")
+    public ResponseEntity<List<InvoiceDTO>> findAllByOrder(@PathVariable("idOrder") Integer idOrder) {
+        List<InvoiceDTO> list = service.findAllByOrderId(idOrder).stream()
+                .map(this::mapToDTO)
+                .toList();
+        return ResponseEntity.ok(list);
+    }
+
     private InvoiceDTO mapToDTO(Invoice invoice) {
         if (invoice == null) return null;
         InvoiceDTO dto = invoiceMapper.map(invoice, InvoiceDTO.class);

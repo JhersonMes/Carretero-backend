@@ -1,5 +1,6 @@
 package com.carretero.dto;
 
+import com.carretero.model.enums.SunatEnvironment;
 import jakarta.validation.constraints.NotBlank;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -24,6 +25,9 @@ public class BusinessConfigDTO {
     private String boletaSeries = "B001";
     private String facturaSeries = "F001";
     private String notaVentaSeries = "NV01";
+
+    /** Ambiente de emision: SIMULADO, BETA o PRODUCCION. */
+    private SunatEnvironment sunatEnvironment;
 
     private String sunatApiUrl;
     private String sunatApiToken;
