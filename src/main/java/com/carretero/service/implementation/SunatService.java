@@ -22,6 +22,7 @@ import org.springframework.http.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.web.util.UriComponentsBuilder;
 
 import java.util.Map;
 import java.util.Optional;
@@ -75,7 +76,10 @@ public class SunatService implements ISunatService {
 
         // 2. Consultar mediante API externa configurada (ej. Decolecta / ApiPeru / Apis.net.pe)
         Optional<BusinessConfig> configOpt = businessConfigRepository.findFirstByActiveTrue();
-        if (configOpt.isPresent() && configOpt.get().getDniRucApiToken() != null && !configOpt.get().getDniRucApiToken().trim().isEmpty()) {
+        // Solo DNI (8 digitos) o RUC (11 digitos) van a la API: el numero viaja en la ruta
+        // de la URL junto con el token del negocio, asi que no se deja pasar otra cosa.
+        boolean dniOrRuc = doc.matches("[0-9]{8}|[0-9]{11}");
+        if (dniOrRuc && configOpt.isPresent() && configOpt.get().getDniRucApiToken() != null && !configOpt.get().getDniRucApiToken().trim().isEmpty()) {
             BusinessConfig config = configOpt.get();
             try {
                 String url = config.getDniRucApiUrl();
@@ -83,7 +87,9 @@ public class SunatService implements ISunatService {
                     url = "https://apiperu.dev/api";
                 }
 
-                String endpoint = (docType == DocumentType.DNI) ? url + "/dni/" + doc : url + "/ruc/" + doc;
+                String endpoint = UriComponentsBuilder.fromUriString(url.trim())
+                        .pathSegment(docType == DocumentType.DNI ? "dni" : "ruc", doc)
+                        .toUriString();
 
                 HttpHeaders headers = new HttpHeaders();
                 headers.setBearerAuth(config.getDniRucApiToken());
